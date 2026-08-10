@@ -14,7 +14,9 @@ Use `next` for prerelease software evaluation. Passing the simulator suite is ne
 
 ## Acceptance run
 
-Copy `hardware/reports/TEMPLATE.json` to a model/firmware-specific filename. Record exact package, firmware, browser, browser version, and operating-system versions. Every check below must pass:
+Follow the complete [physical trainer integration guide](./DEVICE_INTEGRATION_GUIDE.md). Trainer Lab presents the same 12 checks, retains draft notes locally, counts evidence from the current physical session, and exports a schema-shaped report only after every release requirement passes.
+
+The JSON template remains available for tooling and review, but contributors should normally export from Trainer Lab. Record exact package, source fingerprint, firmware, browser, browser version, and operating-system versions. Every check below must pass:
 
 1. Connect and disconnect ten times without duplicate subscriptions, stuck UI state, or a browser reload.
 2. Confirm power and cadence update while pedaling and return toward zero after stopping.
@@ -27,7 +29,7 @@ Copy `hardware/reports/TEMPLATE.json` to a model/firmware-specific filename. Rec
 9. Power-cycle the trainer during a session and confirm stale telemetry and capabilities are cleared.
 10. Repeat stop after command traffic and confirm it is never overtaken by a later target.
 
-Set every report check and the top-level `passed` field to `true` only after the observation succeeds. Add the report to `hardware/compatibility.json`, then run:
+Every check requires a useful sanitized observation. The release gate also requires ten real connections, at least one telemetry sample and control response, a secure browser context, and a runtime fingerprint matching the current behavioral sources. Add the report to `hardware/compatibility.json`, then run:
 
 ```sh
 npm run release:check

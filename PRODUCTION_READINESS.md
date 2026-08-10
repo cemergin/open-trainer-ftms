@@ -27,9 +27,9 @@ Repository files cannot activate or prove these owner-level settings. They are a
 
 ## Enforced hardware gate
 
-`npm run release:check` fails until committed physical evidence satisfies [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The manual workflow applies this check to `latest`; `next` remains the explicitly experimental channel.
+`npm run release:check` fails until committed physical evidence satisfies [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The manual workflow applies this check to `latest`; `next` remains the explicitly experimental channel. Each report carries a deterministic SHA-256 fingerprint of the library and Trainer Lab runtime sources, so a behavior change invalidates old hardware evidence while test-only or declaration-only changes do not.
 
-At the moment, `hardware/compatibility.json` contains no passing physical device. That means the software pipeline can be green while a production-channel release remains correctly blocked. The first intended qualification target is a Wahoo KICKR CORE on recorded firmware and browser versions.
+At the moment, `hardware/compatibility.json` contains no passing physical device. That means the software pipeline can be green while a production-channel release remains correctly blocked. The first intended qualification target is a Wahoo KICKR CORE on recorded firmware and browser versions. Follow the vendor-neutral [device integration guide](./DEVICE_INTEGRATION_GUIDE.md); Trainer Lab records the non-persistent live-session counters and exports the schema-validated evidence.
 
 ## Registry owner setup
 

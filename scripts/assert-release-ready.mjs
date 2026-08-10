@@ -3,6 +3,7 @@ import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import { computeRuntimeFingerprint } from "./source-fingerprint.mjs";
 
 const defaultWorkspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ajv = new Ajv2020({ allErrors: true });
@@ -55,6 +56,7 @@ export function assertReleaseReady(workspaceRoot, distTag) {
   const packageJson = JSON.parse(
     readFileSync(join(workspaceRoot, "packages", "ftms", "package.json"), "utf8"),
   );
+  const runtimeFingerprint = computeRuntimeFingerprint(workspaceRoot);
 
   for (const device of compatibility.validatedDevices) {
     const relativeReport = normalize(device.report);
@@ -75,9 +77,20 @@ export function assertReleaseReady(workspaceRoot, distTag) {
     if (report.passed !== true) {
       throw new Error(`Hardware report did not pass: ${device.report}`);
     }
-    if (report.packageVersion !== packageJson.version) {
+    if (report.runtimeFingerprint !== runtimeFingerprint) {
       throw new Error(
-        `Hardware report ${device.report} validates package ${report.packageVersion}, not ${packageJson.version}.`,
+        `Hardware report ${device.report} validates a different library or Trainer Lab runtime. Repeat the physical suite after behavioral source changes.`,
+      );
+    }
+    if (report.client.secureContext !== true) {
+      throw new Error(`Hardware report did not use HTTPS or localhost: ${device.report}`);
+    }
+    if (report.testSession.realConnectionCount < 10) {
+      throw new Error(`Hardware report has fewer than ten real connections: ${device.report}`);
+    }
+    if (report.testSession.telemetrySamples < 1 || report.testSession.controlResponses < 1) {
+      throw new Error(
+        `Hardware report lacks observed telemetry or control responses: ${device.report}`,
       );
     }
     if (
@@ -100,6 +113,12 @@ export function assertReleaseReady(workspaceRoot, distTag) {
     for (const check of requiredChecks) {
       if (!passedChecks.has(check)) {
         throw new Error(`Hardware report ${device.report} is missing passing check ${check}.`);
+      }
+      const evidence = report.checks.find((entry) => entry.id === check)?.notes.trim();
+      if (!evidence) {
+        throw new Error(
+          `Hardware report ${device.report} is missing observation notes for ${check}.`,
+        );
       }
     }
   }

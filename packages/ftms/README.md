@@ -134,3 +134,4 @@ The repository enforces type-aware lint, deterministic formatting, 95% statement
 - [Issue tracker](https://github.com/cemergin/open-trainer-ftms/issues)
 - [Security policy](https://github.com/cemergin/open-trainer-ftms/security/policy)
 - [Contributing guide](https://github.com/cemergin/open-trainer-ftms/blob/main/CONTRIBUTING.md)
+- [Physical trainer integration guide](https://github.com/cemergin/open-trainer-ftms/blob/main/DEVICE_INTEGRATION_GUIDE.md)
