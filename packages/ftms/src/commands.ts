@@ -1,5 +1,5 @@
-import { FtmsProtocolError } from "./errors.js";
-import type { SimulationParameters } from "./types.js";
+import { FtmsRangeError } from "./errors.js";
+import type { ResistanceControlFormat, SimulationParameters } from "./types.js";
 
 export const CONTROL_OPCODE = {
   requestControl: 0x00,
@@ -13,7 +13,7 @@ export const CONTROL_OPCODE = {
 
 function assertIntegerRange(value: number, minimum: number, maximum: number, label: string): void {
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new FtmsProtocolError(`${label} must be an integer from ${minimum} to ${maximum}.`);
+    throw new FtmsRangeError(`${label} must be an integer from ${minimum} to ${maximum}.`);
   }
 }
 
@@ -47,10 +47,21 @@ export function targetPowerCommand(watts: number): Uint8Array {
   return bytes;
 }
 
-export function targetResistanceCommand(level: number): Uint8Array {
+export function targetResistanceCommand(
+  level: number,
+  format: ResistanceControlFormat = "sint16",
+): Uint8Array {
   const encoded = Math.round(level * 10);
-  assertIntegerRange(encoded, 0, 255, "Encoded resistance level");
-  return Uint8Array.of(CONTROL_OPCODE.setTargetResistance, encoded);
+  if (format === "uint8") {
+    assertIntegerRange(encoded, 0, 255, "Encoded resistance level");
+    return Uint8Array.of(CONTROL_OPCODE.setTargetResistance, encoded);
+  }
+  assertIntegerRange(encoded, -32768, 32767, "Encoded resistance level");
+  const bytes = new Uint8Array(3);
+  const view = new DataView(bytes.buffer);
+  view.setUint8(0, CONTROL_OPCODE.setTargetResistance);
+  view.setInt16(1, encoded, true);
+  return bytes;
 }
 
 export function simulationCommand(parameters: SimulationParameters): Uint8Array {

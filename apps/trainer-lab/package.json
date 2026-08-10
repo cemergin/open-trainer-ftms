@@ -6,9 +6,10 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@open-trainer/ftms": "0.1.0"
+    "@open-trainer/ftms": "*"
   }
 }

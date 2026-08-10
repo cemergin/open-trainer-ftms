@@ -10,6 +10,7 @@ function dataView(bytes: Uint8Array): DataView {
 
 export interface MockFtmsTransportOptions {
   controlResponseDelayMs?: number;
+  resistanceControlFormat?: "sint16" | "uint8";
 }
 
 export class MockFtmsTransport implements FtmsTransport {
@@ -19,6 +20,7 @@ export class MockFtmsTransport implements FtmsTransport {
   readonly #commandHistory: number[] = [];
 
   #connected = false;
+  #connectCount = 0;
   #controlled = false;
   #running = false;
   #targetPower = 140;
@@ -37,6 +39,14 @@ export class MockFtmsTransport implements FtmsTransport {
     return this.#commandHistory;
   }
 
+  get connectCount(): number {
+    return this.#connectCount;
+  }
+
+  subscriptionCount(characteristic: number): number {
+    return this.#subscriptions.get(characteristic)?.size ?? 0;
+  }
+
   get isConnected(): boolean {
     return this.#connected;
   }
@@ -44,6 +54,7 @@ export class MockFtmsTransport implements FtmsTransport {
   async connect(): Promise<void> {
     if (this.#connected) return;
     this.#connected = true;
+    this.#connectCount += 1;
     this.#lastTick = performance.now();
     this.#timer = setInterval(() => this.#tick(), 250);
   }
@@ -55,6 +66,7 @@ export class MockFtmsTransport implements FtmsTransport {
     this.#running = false;
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
+    this.#subscriptions.clear();
     this.#disconnectSignal.emit();
   }
 
@@ -79,7 +91,12 @@ export class MockFtmsTransport implements FtmsTransport {
     }
 
     if (characteristic === FTMS_UUIDS.supportedResistanceRange) {
-      return dataView(Uint8Array.of(0, 200, 1));
+      const bytes = new Uint8Array(6);
+      const view = new DataView(bytes.buffer);
+      view.setInt16(0, 0, true);
+      view.setInt16(2, 200, true);
+      view.setUint16(4, 1, true);
+      return view;
     }
 
     throw new FtmsError(`Mock characteristic 0x${characteristic.toString(16)} is not readable.`);
@@ -95,6 +112,7 @@ export class MockFtmsTransport implements FtmsTransport {
     if (opcode === undefined) throw new FtmsError("Mock received an empty command.");
     this.#commandHistory.push(opcode);
     let result: number = CONTROL_RESULT.success;
+    let machineStatus: Uint8Array | undefined;
 
     switch (opcode) {
       case CONTROL_OPCODE.requestControl:
@@ -103,30 +121,49 @@ export class MockFtmsTransport implements FtmsTransport {
       case CONTROL_OPCODE.reset:
         this.#controlled = false;
         this.#running = false;
+        machineStatus = Uint8Array.of(0x01);
         break;
       case CONTROL_OPCODE.startResume:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
-        else this.#running = true;
+        else {
+          this.#running = true;
+          machineStatus = Uint8Array.of(0x04);
+        }
         break;
       case CONTROL_OPCODE.stopPause:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
-        else this.#running = false;
+        else {
+          this.#running = false;
+          machineStatus = Uint8Array.of(0x02, value[1] ?? 0x01);
+        }
         break;
       case CONTROL_OPCODE.setTargetPower:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
         else if (value.byteLength < 3) result = CONTROL_RESULT.invalidParameter;
-        else this.#targetPower = new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(1, true);
+        else
+          this.#targetPower = new DataView(
+            value.buffer,
+            value.byteOffset,
+            value.byteLength,
+          ).getInt16(1, true);
         break;
       case CONTROL_OPCODE.setTargetResistance:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
-        else if (value[1] === undefined) result = CONTROL_RESULT.invalidParameter;
-        else this.#resistance = value[1] / 10;
+        else if ((this.options.resistanceControlFormat ?? "sint16") === "uint8") {
+          if (value.byteLength < 2) result = CONTROL_RESULT.invalidParameter;
+          else this.#resistance = (value[1] ?? 0) / 10;
+        } else if (value.byteLength < 3) result = CONTROL_RESULT.invalidParameter;
+        else {
+          this.#resistance =
+            new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(1, true) / 10;
+        }
         break;
       case CONTROL_OPCODE.setSimulation:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
         else if (value.byteLength < 7) result = CONTROL_RESULT.invalidParameter;
         else {
-          const grade = new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(3, true) / 100;
+          const grade =
+            new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(3, true) / 100;
           this.#targetPower = Math.max(60, 130 + grade * 18);
         }
         break;
@@ -136,6 +173,9 @@ export class MockFtmsTransport implements FtmsTransport {
 
     const respond = (): void => {
       this.#emit(FTMS_UUIDS.controlPoint, Uint8Array.of(0x80, opcode, result));
+      if (result === CONTROL_RESULT.success && machineStatus) {
+        this.#emit(FTMS_UUIDS.machineStatus, machineStatus);
+      }
     };
     const delay = this.options.controlResponseDelayMs ?? 0;
     if (delay > 0) setTimeout(respond, delay);
@@ -157,6 +197,20 @@ export class MockFtmsTransport implements FtmsTransport {
     return this.#disconnectSignal.subscribe(listener);
   }
 
+  /** Testing hook for protocol notifications not driven by normal mock commands. */
+  emitNotification(characteristic: number, bytes: Uint8Array): void {
+    this.#assertConnected();
+    this.#emit(characteristic, bytes);
+  }
+
+  /** Simulates another application taking FTMS control. */
+  loseControl(): void {
+    this.#assertConnected();
+    this.#controlled = false;
+    this.#running = false;
+    this.#emit(FTMS_UUIDS.machineStatus, Uint8Array.of(0xff));
+  }
+
   #assertConnected(): void {
     if (!this.#connected) throw new FtmsError("The simulated trainer is disconnected.");
   }
@@ -175,7 +229,9 @@ export class MockFtmsTransport implements FtmsTransport {
     const desiredPower = this.#running ? this.#targetPower : 0;
     this.#power += (desiredPower - this.#power) * Math.min(deltaSeconds * 2.2, 1);
     this.#cadence += ((this.#running ? 86 : 0) - this.#cadence) * Math.min(deltaSeconds * 2, 1);
-    this.#speed += ((this.#running ? 12 + this.#power * 0.085 : 0) - this.#speed) * Math.min(deltaSeconds * 1.5, 1);
+    this.#speed +=
+      ((this.#running ? 12 + this.#power * 0.085 : 0) - this.#speed) *
+      Math.min(deltaSeconds * 1.5, 1);
     this.#distance += (this.#speed / 3.6) * deltaSeconds;
     if (this.#running) this.#elapsed += deltaSeconds;
 
@@ -189,7 +245,7 @@ export class MockFtmsTransport implements FtmsTransport {
     view.setUint8(6, distance & 0xff);
     view.setUint8(7, (distance >> 8) & 0xff);
     view.setUint8(8, (distance >> 16) & 0xff);
-    view.setInt16(9, Math.round(this.#resistance), true);
+    view.setInt16(9, Math.round(this.#resistance * 10), true);
     view.setInt16(11, Math.round(this.#power), true);
     view.setUint16(13, Math.round(this.#elapsed), true);
     this.#emit(FTMS_UUIDS.indoorBikeData, bytes);

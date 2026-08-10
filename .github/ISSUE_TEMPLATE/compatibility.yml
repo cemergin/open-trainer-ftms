@@ -1,0 +1,70 @@
+name: Trainer compatibility report
+description: Share a sanitized physical qualification result for an FTMS trainer configuration.
+title: "compatibility: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run the repository's Physical Trainer Integration Guide and export the report from Trainer Lab before filing this issue. A simulator result does not qualify physical behavior.
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Manufacturer and exact model
+      placeholder: Wahoo KICKR CORE
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      placeholder: 1.5.36
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Operating system, browser, and browser version
+      placeholder: macOS 15, Chrome 140.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Qualification outcome
+      options:
+        - Passed all checks
+        - Blocked before completion
+        - Failed one or more checks
+        - Required capability is unsupported
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Exported report or blocking observations
+      description: Drag in the sanitized Trainer Lab report, or explain exactly where the run stopped.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Sanitized session log
+      description: Optional. Remove identifiers and personal workout data before attaching it.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Safety and privacy confirmations
+      options:
+        - label: I followed the Physical Trainer Integration Guide and stopped for unsafe behavior.
+          required: true
+        - label: This report contains no serial number, Bluetooth address, account data, token, or personal workout history.
+          required: true
+        - label: I did not mark unsupported or untested behavior as passed.
+          required: true

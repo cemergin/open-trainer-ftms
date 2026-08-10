@@ -12,11 +12,25 @@ function readonlyStream<T>(subscribe: Stream<T>["subscribe"]): Stream<T> {
   return Object.freeze({ subscribe });
 }
 
+function reportUnhandledListenerError(error: unknown): void {
+  const reportError = Reflect.get(globalThis, "reportError") as
+    ((reason: unknown) => void) | undefined;
+  if (typeof reportError === "function") {
+    reportError.call(globalThis, error);
+    return;
+  }
+  queueMicrotask(() => {
+    throw error;
+  });
+}
+
 export class EventSource<T> {
   readonly #listeners = new Set<(value: T) => void>();
   readonly #view: Stream<T>;
 
-  constructor() {
+  constructor(
+    private readonly onListenerError: (error: unknown) => void = reportUnhandledListenerError,
+  ) {
     this.#view = readonlyStream((listener) => this.subscribe(listener));
   }
 
@@ -30,7 +44,17 @@ export class EventSource<T> {
   }
 
   emit(value: T): void {
-    for (const listener of [...this.#listeners]) listener(value);
+    for (const listener of [...this.#listeners]) {
+      try {
+        listener(value);
+      } catch (error) {
+        try {
+          this.onListenerError(error);
+        } catch (reportingError) {
+          reportUnhandledListenerError(reportingError);
+        }
+      }
+    }
   }
 
   clear(): void {
@@ -39,21 +63,30 @@ export class EventSource<T> {
 }
 
 export class StateSource<T> {
-  readonly #events = new EventSource<T>();
+  readonly #events: EventSource<T>;
   readonly #view: StateValue<T>;
   #current: T;
 
-  constructor(initialValue: T) {
+  constructor(
+    initialValue: T,
+    onListenerError: (error: unknown) => void = reportUnhandledListenerError,
+  ) {
+    this.#events = new EventSource<T>(onListenerError);
     this.#current = initialValue;
-    const source = this;
+    const getCurrent = (): T => this.#current;
+    const subscribe = (listener: (value: T) => void): Unsubscribe => {
+      try {
+        listener(this.#current);
+      } catch (error) {
+        onListenerError(error);
+      }
+      return this.#events.subscribe(listener);
+    };
     this.#view = Object.freeze({
       get current(): T {
-        return source.#current;
+        return getCurrent();
       },
-      subscribe(listener: (value: T) => void): Unsubscribe {
-        listener(source.#current);
-        return source.#events.subscribe(listener);
-      },
+      subscribe,
     });
   }
 

@@ -33,16 +33,16 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run tests
         run: npm test
@@ -53,6 +53,48 @@ jobs:
       - name: Build workspace
         run: npm run build
 
+  quality:
+    name: Lint, format, coverage, and audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Require a changeset for publishable package changes
+        if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+        run: npm run changeset:status -- --since="origin/${{ github.base_ref }}"
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Run type-aware lint
+        run: npm run lint
+
+      - name: Run coverage gates
+        run: npm run test:coverage
+
+      - name: Test Trainer Lab qualification reports
+        run: npm run test:lab
+
+      - name: Test release gates
+        run: npm run test:release-gate
+
+      - name: Audit the complete dependency graph
+        run: npm audit --audit-level=high
+
   package:
     name: Verify packed npm package
     runs-on: ubuntu-latest
@@ -60,16 +102,16 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Verify packed package
         run: npm run verify:package

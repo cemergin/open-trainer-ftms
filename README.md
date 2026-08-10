@@ -28,13 +28,10 @@ Open `http://127.0.0.1:4173`. Choose **Use simulator** to exercise the entire pu
 ## Verify the workspace
 
 ```sh
-npm test
-npm run typecheck
-npm run build
-npm run verify:package
+npm run verify
 ```
 
-The library follows a test-first workflow. Its current suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries.
+This is the exact software gate used for releases: format, type-aware lint, coverage thresholds, strict type checking, builds, package metadata/type checks, clean tarball installation, and runtime smoke tests. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for every enforced gate.
 
 ## Manual npm release
 
@@ -44,10 +41,12 @@ For a real release:
 
 1. Merge the Changesets-generated version pull request described below. npm versions cannot be overwritten.
 2. In the npm package settings, configure a GitHub Actions trusted publisher for user `cemergin`, repository `open-trainer-ftms`, workflow file `publish.yml`, environment `npm`, and allow the `npm publish` action.
-3. Optionally protect the repository's `npm` environment with required reviewers.
+3. Restrict the repository's `npm` environment to protected branches and require a maintainer approval.
 4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.
 
-The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. If an initial token-authenticated publish is required before npm will let you configure the trusted publisher, add a narrowly scoped automation token as the `NPM_TOKEN` secret on the `npm` environment, publish once, then remove the secret after trusted publishing is configured.
+The `latest` channel is additionally blocked until committed physical-trainer evidence passes [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). Contributors qualify devices with the repeatable [physical trainer integration guide](./DEVICE_INTEGRATION_GUIDE.md). The `next` channel is explicitly for prerelease evaluation.
+
+The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. It deliberately has no long-lived npm token fallback: trusted publishing must be configured before the first automated release.
 
 See npm's [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/) for the one-time registry configuration.
 
@@ -64,6 +63,8 @@ Published versions are managed with [Changesets](https://github.com/changesets/c
 Changesets combine multiple pending entries and apply the highest required bump. Documentation, tests, CI, and unpublished Trainer Lab changes do not need a changeset. The versioning bot never publishes to npm.
 
 ## First real-trainer session
+
+Trainer Lab now contains the complete 12-step device qualification workflow and exports the release-gate report. Read [DEVICE_INTEGRATION_GUIDE.md](./DEVICE_INTEGRATION_GUIDE.md) before the first physical command.
 
 1. Update the trainer in the Wahoo app, then fully close Wahoo, Zwift, and other trainer applications.
 2. Put the bike on the trainer and plug the trainer into power.
@@ -92,6 +93,8 @@ import { createMockTrainer } from "@open-trainer/ftms/testing";
 ```
 
 Reactive data flows out through read-only state and streams. Async commands flow in through serialized queues. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundaries, TDD strategy, and remaining hardware-validation plan.
+
+FTMS 1.0 and 1.0.1 differ in target-resistance encoding. Modern `sint16` is the default; legacy `uint8` must be selected explicitly with `resistanceControlFormat`. Do not guess from a model name—record the firmware and confirmed format in the hardware compatibility report.
 
 ## Next phase
 

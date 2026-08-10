@@ -1,10 +1,4 @@
-import {
-  mkdtempSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -22,8 +16,7 @@ function run(command, args, cwd = workspaceRoot) {
     cwd,
     env: {
       ...process.env,
-      NPM_CONFIG_CACHE:
-        process.env.NPM_CONFIG_CACHE ?? join(tmpdir(), "open-trainer-npm-cache"),
+      NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE ?? join(tmpdir(), "open-trainer-npm-cache"),
     },
     stdio: "inherit",
   });
@@ -35,13 +28,7 @@ function run(command, args, cwd = workspaceRoot) {
 }
 
 try {
-  run(npmCommand, [
-    "pack",
-    packageDirectory,
-    "--pack-destination",
-    temporaryDirectory,
-    "--silent",
-  ]);
+  run(npmCommand, ["pack", packageDirectory, "--pack-destination", temporaryDirectory, "--silent"]);
 
   const tarballs = readdirSync(temporaryDirectory).filter((file) => file.endsWith(".tgz"));
   if (tarballs.length !== 1) {
@@ -52,11 +39,7 @@ try {
   const binaryDirectory = join(workspaceRoot, "node_modules", ".bin");
 
   run(join(binaryDirectory, `publint${executableSuffix}`), [tarball, "--strict"]);
-  run(join(binaryDirectory, `attw${executableSuffix}`), [
-    tarball,
-    "--profile",
-    "esm-only",
-  ]);
+  run(join(binaryDirectory, `attw${executableSuffix}`), [tarball, "--profile", "esm-only"]);
 
   mkdirSync(consumerDirectory);
   writeFileSync(

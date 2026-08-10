@@ -4,7 +4,7 @@
 
 A transport-independent, strongly typed library for reading and controlling Bluetooth FTMS smart trainers. The initial hardware target is Wahoo KICKR CORE firmware 1.1.1 or newer.
 
-This package is ESM-only and currently pre-1.0. Its protocol core and simulator are tested automatically; physical-trainer behavior is still being validated and documented by model and firmware.
+This package is ESM-only and currently pre-1.0. Its production software gates are automated; npm's `latest` channel remains blocked until physical-trainer evidence is committed and verified.
 
 ## Install
 
@@ -44,13 +44,13 @@ unsubscribe();
 
 ## Entry points
 
-| Import | Stability and purpose |
-| --- | --- |
-| `@open-trainer/ftms` | Stable trainer contracts, errors, reactive primitives, and transforms |
-| `@open-trainer/ftms/web-bluetooth` | Browser adapter and trainer factory |
-| `@open-trainer/ftms/testing` | Simulator and deterministic test utilities |
-| `@open-trainer/ftms/transport` | Extension point for custom BLE or native transports |
-| `@open-trainer/ftms/raw` | Low-level FTMS UUIDs and packet codecs; intentionally less stable |
+| Import                             | Stability and purpose                                                 |
+| ---------------------------------- | --------------------------------------------------------------------- |
+| `@open-trainer/ftms`               | Stable trainer contracts, errors, reactive primitives, and transforms |
+| `@open-trainer/ftms/web-bluetooth` | Browser adapter and trainer factory                                   |
+| `@open-trainer/ftms/testing`       | Simulator and deterministic test utilities                            |
+| `@open-trainer/ftms/transport`     | Extension point for custom BLE or native transports                   |
+| `@open-trainer/ftms/raw`           | Low-level FTMS UUIDs and packet codecs; intentionally less stable     |
 
 Applications should depend on the semantic root API and adapter factories. Keep raw packet parsing outside application and game code.
 
@@ -70,6 +70,8 @@ unsubscribe();
 
 State values represent connection, control ownership, activity, capabilities, and the latest telemetry. Streams represent transient control responses, machine-status packets, and errors. Telemetry becomes `null` on disconnect so applications cannot accidentally display stale watts as live data.
 
+`machineStatusEvents` exposes parsed lifecycle events while `machineStatus` retains raw bytes for diagnostics and future protocol additions. Subscriber exceptions are isolated and routed to `errors`, so one UI component cannot interrupt trainer state processing.
+
 ## Commands and safety
 
 Commands are asynchronous and serialized. A normal controlled session is:
@@ -82,7 +84,20 @@ Commands are asynchronous and serialized. A normal controlled session is:
 
 Do not send ERG or resistance targets that the connected trainer did not advertise. Test new hardware behavior at low resistance on an unoccupied bike. An application must always expose an obvious stop control and handle disconnect/error events.
 
-All command methods reject with typed `FtmsError` subclasses for protocol, capability, and control failures. Human-readable messages are for diagnostics and may evolve before 1.0.
+All command methods reject with typed `FtmsError` subclasses. Branch on the stable `error.code` values in `FTMS_ERROR_CODE`; human-readable messages are diagnostic text rather than API contracts.
+
+FTMS 1.0 uses a two-byte `UINT8` target-resistance procedure, while FTMS 1.0.1 uses a three-byte `SINT16` procedure. The package defaults to 1.0.1. Configure a confirmed legacy device explicitly:
+
+```ts
+const trainer = createWebBluetoothTrainer(
+  {},
+  {
+    resistanceControlFormat: "uint8",
+  },
+);
+```
+
+Discovery is strict by default: if a trainer advertises a target feature but its required range or Machine Status cannot be configured, `connect()` rejects. `strictProtocol: false` is available only as an explicit interoperability escape hatch and emits the discovery failures on `errors`.
 
 ## Implemented
 
@@ -93,7 +108,11 @@ All command methods reject with typed `FtmsError` subclasses for protocol, capab
 - Manual resistance level
 - Indoor-bike simulation parameters
 - Serialized control-point procedures with timeouts
+- Late-response quarantine after a command timeout
+- Setpoint coalescing and stop/pause/reset priority over queued targets
 - Serialized browser GATT operations
+- Stable error codes and typed Machine Status lifecycle events
+- FTMS 1.0 and 1.0.1 resistance-control formats
 - Dependency-free reactive state and stream transforms
 - Real Web Bluetooth and simulated transports
 
@@ -109,9 +128,10 @@ The library is capability-driven. Applications should check the object returned 
 
 ## Development and support
 
-The repository runs strict TypeScript checks, unit and behavioral tests, NodeNext and bundler consumer compilation, `publint`, Are the Types Wrong, and an installed-tarball runtime smoke test before publishing.
+The repository enforces type-aware lint, deterministic formatting, 95% statement/line/function and 80% branch coverage, strict TypeScript, NodeNext and bundler consumer compilation, `publint`, Are the Types Wrong, and an installed-tarball runtime smoke test before publishing.
 
 - [Repository and Trainer Lab](https://github.com/cemergin/open-trainer-ftms)
 - [Issue tracker](https://github.com/cemergin/open-trainer-ftms/issues)
 - [Security policy](https://github.com/cemergin/open-trainer-ftms/security/policy)
 - [Contributing guide](https://github.com/cemergin/open-trainer-ftms/blob/main/CONTRIBUTING.md)
+- [Physical trainer integration guide](https://github.com/cemergin/open-trainer-ftms/blob/main/DEVICE_INTEGRATION_GUIDE.md)

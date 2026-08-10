@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EventSource,
   StateSource,
@@ -9,6 +9,10 @@ import {
 } from "../src/reactive.js";
 
 describe("dependency-free reactive primitives", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("exposes synchronous current state and immediately updates subscribers", () => {
     const source = new StateSource(10);
     const state = source.asReadonly();
@@ -54,5 +58,50 @@ describe("dependency-free reactive primitives", () => {
     source.emit(3);
 
     expect(values).toEqual([4, 6]);
+  });
+
+  it("isolates listener failures and keeps notifying other listeners", () => {
+    const listenerErrors: unknown[] = [];
+    const source = new EventSource<number>((error) => listenerErrors.push(error));
+    const values: number[] = [];
+    source.subscribe(() => {
+      throw new Error("broken consumer");
+    });
+    source.subscribe((value) => values.push(value));
+
+    expect(() => source.emit(42)).not.toThrow();
+    expect(values).toEqual([42]);
+    expect(listenerErrors).toHaveLength(1);
+    expect(listenerErrors[0]).toEqual(new Error("broken consumer"));
+  });
+
+  it("isolates failures in a StateValue's immediate subscription emission", () => {
+    const listenerErrors: unknown[] = [];
+    const source = new StateSource(10, (error) => listenerErrors.push(error));
+
+    expect(() =>
+      source.asReadonly().subscribe(() => {
+        throw new Error("broken state consumer");
+      }),
+    ).not.toThrow();
+    expect(listenerErrors).toHaveLength(1);
+  });
+
+  it("uses the platform error reporter and supports clearing listeners", () => {
+    const reportError = vi.fn();
+    vi.stubGlobal("reportError", reportError);
+    const source = new EventSource<number>();
+    const values: number[] = [];
+    source.subscribe(() => {
+      throw new Error("reported");
+    });
+    source.subscribe((value) => values.push(value));
+
+    source.emit(1);
+    source.clear();
+    source.emit(2);
+
+    expect(reportError).toHaveBeenCalledOnce();
+    expect(values).toEqual([1]);
   });
 });

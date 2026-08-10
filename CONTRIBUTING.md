@@ -12,10 +12,7 @@ Requirements:
 
 ```sh
 npm ci
-npm test
-npm run typecheck
-npm run build
-npm run verify:package
+npm run verify
 ```
 
 Use `npm run dev` and the simulator for normal Trainer Lab development. Physical-trainer tests must begin at low resistance on an unoccupied bike, with another trainer application fully disconnected.
@@ -32,11 +29,14 @@ Pull requests should explain:
 - How it was verified.
 - Hardware model and firmware for device-specific observations.
 - Safety implications for resistance or control behavior.
+- Whether physical evidence is required or changed.
 
 Remove device identifiers and personal workout data from Bluetooth captures before attaching them.
 
 ## Commit and release policy
 
 Commits should be small enough to review and use an imperative summary. Changesets calculate package versions and maintain the changelog through a release pull request. Publishing remains a separate, manual GitHub Action with an npm environment gate.
+
+Changes to physical compatibility evidence must follow the [device integration guide](./DEVICE_INTEGRATION_GUIDE.md) and [hardware validation policy](./HARDWARE_VALIDATION.md). The `latest` release channel rejects missing, stale, simulated, or incomplete evidence.
 
 Security vulnerabilities belong in GitHub private vulnerability reporting, not a public issue. See [SECURITY.md](./SECURITY.md).

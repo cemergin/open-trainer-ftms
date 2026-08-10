@@ -1,0 +1,44 @@
+{
+  "$schema": "../report.schema.json",
+  "schemaVersion": 2,
+  "recordedAt": "YYYY-MM-DDTHH:mm:ssZ",
+  "packageVersion": "0.0.0",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "runtimeFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+  "hardware": {
+    "manufacturer": "Example",
+    "model": "Example trainer",
+    "firmware": "0.0.0",
+    "resistanceControlFormat": "sint16"
+  },
+  "client": {
+    "operatingSystem": "Example OS 1.0",
+    "browser": "Chrome",
+    "browserVersion": "0.0.0",
+    "secureContext": true
+  },
+  "testSession": {
+    "source": "trainer-lab",
+    "startedAt": "YYYY-MM-DDTHH:mm:ssZ",
+    "realConnectionCount": 0,
+    "telemetrySamples": 0,
+    "controlResponses": 0,
+    "errorCount": 0
+  },
+  "checks": [
+    { "id": "connect-reconnect-10", "passed": false, "notes": "" },
+    { "id": "telemetry-power-cadence", "passed": false, "notes": "" },
+    { "id": "acquire-control", "passed": false, "notes": "" },
+    { "id": "erg-low-medium-high", "passed": false, "notes": "" },
+    { "id": "resistance-control", "passed": false, "notes": "" },
+    { "id": "simulation-grade", "passed": false, "notes": "" },
+    { "id": "pause-resume", "passed": false, "notes": "" },
+    { "id": "stop", "passed": false, "notes": "" },
+    { "id": "control-loss", "passed": false, "notes": "" },
+    { "id": "competing-app", "passed": false, "notes": "" },
+    { "id": "power-cycle", "passed": false, "notes": "" },
+    { "id": "stop-after-command-traffic", "passed": false, "notes": "" }
+  ],
+  "passed": false,
+  "notes": "Remove serial numbers, Bluetooth addresses, and personal workout data."
+}
