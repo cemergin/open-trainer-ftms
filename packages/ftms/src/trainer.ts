@@ -198,7 +198,7 @@ export class FtmsTrainer implements Trainer {
         this.#errorSource.emit(normalized);
       }
 
-      this.#connectionSource.set("ready");
+      this.#connectionSource.setIfChanged("ready");
       return capabilities;
     } catch (error) {
       const normalized = normalizeFtmsError(
@@ -206,7 +206,7 @@ export class FtmsTrainer implements Trainer {
         "Connecting to the FTMS trainer failed.",
         FTMS_ERROR_CODE.transportFailure,
       );
-      this.#connectionSource.set("error");
+      this.#connectionSource.setIfChanged("error");
       this.#errorSource.emit(normalized);
       try {
         await this.#cleanup(true);
@@ -254,20 +254,20 @@ export class FtmsTrainer implements Trainer {
   }
 
   async acquireControl(): Promise<ControlPointResponse> {
-    this.#controlSource.set("requesting");
+    this.#controlSource.setIfChanged("requesting");
     try {
       const response = await this.#command(requestControlCommand());
-      this.#controlSource.set("owned");
+      this.#controlSource.setIfChanged("owned");
       return response;
     } catch (error) {
-      this.#controlSource.set("unavailable");
+      this.#controlSource.setIfChanged("unavailable");
       throw error;
     }
   }
 
   async start(): Promise<ControlPointResponse> {
     const response = await this.#command(startCommand());
-    this.#activitySource.set("running");
+    this.#activitySource.setIfChanged("running");
     return response;
   }
 
@@ -276,21 +276,21 @@ export class FtmsTrainer implements Trainer {
       cancelQueuedKeys: ["setpoint"],
       priority: "safety",
     });
-    this.#activitySource.set("paused");
+    this.#activitySource.setIfChanged("paused");
     return response;
   }
 
   async stop(): Promise<ControlPointResponse> {
-    this.#activitySource.set("stopping");
+    this.#activitySource.setIfChanged("stopping");
     try {
       const response = await this.#command(stopCommand(), {
         cancelQueuedKeys: ["setpoint"],
         priority: "safety",
       });
-      this.#activitySource.set("idle");
+      this.#activitySource.setIfChanged("idle");
       return response;
     } catch (error) {
-      this.#activitySource.set("idle");
+      this.#activitySource.setIfChanged("idle");
       this.#errorSource.emit(error instanceof Error ? error : new FtmsError(String(error)));
       throw error;
     }
@@ -301,8 +301,8 @@ export class FtmsTrainer implements Trainer {
       cancelQueuedKeys: ["setpoint"],
       priority: "safety",
     });
-    this.#controlSource.set("unavailable");
-    this.#activitySource.set("idle");
+    this.#controlSource.setIfChanged("unavailable");
+    this.#activitySource.setIfChanged("idle");
     return response;
   }
 
@@ -448,19 +448,19 @@ export class FtmsTrainer implements Trainer {
     this.#queue?.close(reason);
     this.#queue = undefined;
     this.#unsubscribeAll();
-    this.#capabilitySource.set(null);
-    this.#telemetrySource.set(null);
-    this.#controlSource.set("unavailable");
-    this.#activitySource.set("idle");
-    this.#connectionSource.set("disconnected");
+    this.#capabilitySource.setIfChanged(null);
+    this.#telemetrySource.setIfChanged(null);
+    this.#controlSource.setIfChanged("unavailable");
+    this.#activitySource.setIfChanged("idle");
+    this.#connectionSource.setIfChanged("disconnected");
   }
 
   async #cleanup(disconnectTransport: boolean): Promise<void> {
     this.#queue?.close();
     this.#queue = undefined;
     this.#unsubscribeAll();
-    this.#capabilitySource.set(null);
-    this.#telemetrySource.set(null);
+    this.#capabilitySource.setIfChanged(null);
+    this.#telemetrySource.setIfChanged(null);
     this.#controlSource.setIfChanged("unavailable");
     this.#activitySource.setIfChanged("idle");
     if (disconnectTransport && this.transport.isConnected) await this.transport.disconnect();

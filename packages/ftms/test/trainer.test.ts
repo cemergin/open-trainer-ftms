@@ -83,8 +83,12 @@ describe("FtmsTrainer with the simulated transport", () => {
     expect(trainer.activity.current).toBe("idle");
 
     const connectionStates: string[] = [];
+    const activityStates: string[] = [];
     const unsubscribeConnection = trainer.connection.subscribe((state) => {
       connectionStates.push(state);
+    });
+    const unsubscribeActivity = trainer.activity.subscribe((state) => {
+      activityStates.push(state);
     });
 
     const capabilities = await trainer.connect();
@@ -112,10 +116,12 @@ describe("FtmsTrainer with the simulated transport", () => {
     expect(telemetry.instantaneousPowerWatts).toBeGreaterThan(0);
     await trainer.stop();
     expect(trainer.activity.current).toBe("idle");
+    expect(activityStates).toEqual(["idle", "running", "stopping", "idle"]);
     await trainer.disconnect();
     expect(trainer.connection.current).toBe("disconnected");
     expect(trainer.telemetry.current).toBeNull();
     unsubscribeConnection();
+    unsubscribeActivity();
   });
 
   it("surfaces control-not-permitted responses", async () => {
