@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10140f" />
+    <meta name="description" content="A local companion for inspecting and controlling Bluetooth FTMS smart trainers." />
+    <title>Open Trainer Companion</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Open Trainer / FTMS debugger</p>
+          <h1>Trainer Companion</h1>
+          <p class="lede">Inspect the library’s reactive state, verify telemetry, and safely exercise trainer controls.</p>
+        </div>
+        <div class="connection-card">
+          <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+          <div>
+            <span class="label">Trainer state</span>
+            <strong id="status">Disconnected</strong>
+            <span id="device-name" class="device-name">No device selected</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="connect-panel panel">
+        <div>
+          <h2>Connection</h2>
+          <p>Use the simulator first, then connect a real FTMS trainer in Chrome or Edge.</p>
+        </div>
+        <div class="button-row">
+          <button id="connect-simulator" class="button secondary">Use simulator</button>
+          <button id="connect-real" class="button primary">Connect trainer</button>
+          <button id="disconnect" class="button ghost" disabled>Disconnect</button>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Live trainer measurements">
+        <article class="metric-card power">
+          <span class="label">Power</span>
+          <strong><span id="power">—</span><small> W</small></strong>
+        </article>
+        <article class="metric-card">
+          <span class="label">Cadence</span>
+          <strong><span id="cadence">—</span><small> rpm</small></strong>
+        </article>
+        <article class="metric-card">
+          <span class="label">Trainer speed</span>
+          <strong><span id="speed">—</span><small> km/h</small></strong>
+        </article>
+        <article class="metric-card">
+          <span class="label">Distance</span>
+          <strong><span id="distance">—</span><small> km</small></strong>
+        </article>
+      </section>
+
+      <section class="dashboard-grid">
+        <article class="panel chart-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Last 60 samples</p>
+              <h2>Live response</h2>
+            </div>
+            <div class="legend"><span class="power-key"></span>Power <span class="cadence-key"></span>Cadence</div>
+          </div>
+          <canvas id="chart" aria-label="Power and cadence chart"></canvas>
+        </article>
+
+        <article class="panel control-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Safety gated</p>
+              <h2>Control</h2>
+            </div>
+            <button id="stop" class="button danger" disabled>Stop resistance</button>
+          </div>
+
+          <div class="sequence-controls">
+            <button id="request-control" class="button secondary" disabled>1. Take control</button>
+            <button id="start" class="button secondary" disabled>2. Start</button>
+            <button id="pause" class="button ghost" disabled>Pause</button>
+          </div>
+
+          <form id="power-form" class="control-form">
+            <label for="target-power">ERG target</label>
+            <div class="input-with-unit">
+              <input id="target-power" type="number" min="0" max="1800" step="1" value="140" />
+              <span>watts</span>
+            </div>
+            <button class="button primary" type="submit" disabled>Set power</button>
+          </form>
+
+          <form id="resistance-form" class="control-form">
+            <label for="resistance">Resistance level</label>
+            <div class="input-with-unit">
+              <input id="resistance" type="number" min="0" max="20" step="0.1" value="5" />
+              <span>level</span>
+            </div>
+            <button class="button secondary" type="submit" disabled>Set level</button>
+          </form>
+
+          <form id="grade-form" class="control-form">
+            <label for="grade">Simulated grade</label>
+            <div class="input-with-unit">
+              <input id="grade" type="number" min="-10" max="16" step="0.1" value="0" />
+              <span>%</span>
+            </div>
+            <button class="button secondary" type="submit" disabled>Set grade</button>
+          </form>
+
+          <p class="safety-note">Begin with a low power target. Keep the bike occupied whenever control is active.</p>
+        </article>
+      </section>
+
+      <section class="lower-grid">
+        <article class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Discovered from device</p>
+              <h2>Capabilities</h2>
+            </div>
+          </div>
+          <div id="capabilities" class="capabilities empty-state">Connect a trainer to inspect its FTMS features.</div>
+        </article>
+
+        <article class="panel snapshot-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Read-only reactive API</p>
+              <h2>Library snapshot</h2>
+            </div>
+            <button id="copy-snapshot" class="button ghost">Copy JSON</button>
+          </div>
+          <dl class="state-grid">
+            <div><dt>Connection</dt><dd id="connection-state">disconnected</dd></div>
+            <div><dt>Control</dt><dd id="control-state">unavailable</dd></div>
+            <div><dt>Activity</dt><dd id="activity-state">idle</dd></div>
+            <div><dt>Packet age</dt><dd id="packet-age">—</dd></div>
+          </dl>
+          <pre id="snapshot" class="snapshot" aria-live="polite">{
+  "telemetry": null
+}</pre>
+        </article>
+
+        <article class="panel log-panel full-width">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Debug stream</p>
+              <h2>Session log</h2>
+            </div>
+            <div class="button-row">
+              <button id="clear-log" class="button ghost">Clear</button>
+              <button id="download-log" class="button ghost">Download JSON</button>
+            </div>
+          </div>
+          <ol id="log" class="log" aria-live="polite"></ol>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

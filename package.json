@@ -1,0 +1,32 @@
+{
+  "name": "open-trainer-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cemergin/open-trainer-ftms.git"
+  },
+  "homepage": "https://github.com/cemergin/open-trainer-ftms#readme",
+  "bugs": {
+    "url": "https://github.com/cemergin/open-trainer-ftms/issues"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build:library && npm run build:lab",
+    "build:library": "npm run build --workspace @open-trainer/ftms",
+    "build:lab": "npm run build --workspace @open-trainer/trainer-lab",
+    "dev": "npm run build:library && npm run dev --workspace @open-trainer/trainer-lab",
+    "test": "npm run test --workspace @open-trainer/ftms",
+    "typecheck": "npm run build:library && npm run typecheck --workspace @open-trainer/trainer-lab"
+  },
+  "devDependencies": {
+    "@types/web-bluetooth": "^0.0.21",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.1",
+    "vitest": "^3.2.4"
+  }
+}

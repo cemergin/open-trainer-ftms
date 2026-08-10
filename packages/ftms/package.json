@@ -1,0 +1,56 @@
+{
+  "name": "@open-trainer/ftms",
+  "version": "0.1.0",
+  "description": "A transport-independent Bluetooth FTMS controller for browser-based smart trainer applications.",
+  "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cemergin/open-trainer-ftms.git",
+    "directory": "packages/ftms"
+  },
+  "homepage": "https://github.com/cemergin/open-trainer-ftms/tree/main/packages/ftms#readme",
+  "bugs": {
+    "url": "https://github.com/cemergin/open-trainer-ftms/issues"
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./web-bluetooth": {
+      "types": "./dist/web-bluetooth.d.ts",
+      "import": "./dist/web-bluetooth.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
+    "./transport": {
+      "types": "./dist/transport.d.ts",
+      "import": "./dist/transport.js"
+    },
+    "./raw": {
+      "types": "./dist/raw.d.ts",
+      "import": "./dist/raw.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:consumer": "tsc -p test-consumer/tsconfig.json",
+    "verify": "npm run typecheck && npm run typecheck:consumer && npm run test && npm run build",
+    "prepack": "npm run verify"
+  },
+  "keywords": ["bluetooth", "ble", "ftms", "cycling", "smart-trainer", "web-bluetooth"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@types/web-bluetooth": "^0.0.21"
+  }
+}
