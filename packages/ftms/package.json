@@ -4,6 +4,9 @@
   "description": "A transport-independent Bluetooth FTMS controller for browser-based smart trainer applications.",
   "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cemergin/open-trainer-ftms.git",
@@ -41,11 +44,22 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "typecheck:consumer": "tsc -p test-consumer/tsconfig.json",
-    "verify": "npm run typecheck && npm run typecheck:consumer && npm run test && npm run build",
+    "typecheck:consumer": "tsc -p test-consumer/tsconfig.json && tsc -p test-consumer/tsconfig.bundler.json",
+    "verify": "npm run typecheck && npm run test && npm run build && npm run typecheck:consumer",
     "prepack": "npm run verify"
   },
-  "keywords": ["bluetooth", "ble", "ftms", "cycling", "smart-trainer", "web-bluetooth"],
+  "keywords": [
+    "bluetooth",
+    "ble",
+    "ftms",
+    "fitness-machine-service",
+    "cycling",
+    "indoor-cycling",
+    "smart-trainer",
+    "erg",
+    "kickr",
+    "web-bluetooth"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"

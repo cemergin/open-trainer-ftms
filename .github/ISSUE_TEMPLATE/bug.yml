@@ -1,0 +1,83 @@
+name: Bug report
+description: Report reproducible library, simulator, or trainer behavior.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Open Trainer. Do not test unsafe resistance behavior while riding, and do not include device identifiers or personal workout data.
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version or commit
+      placeholder: 0.1.0 or abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Simulator
+        - Chrome with physical trainer
+        - Edge with physical trainer
+        - Custom transport
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and browser versions
+      placeholder: macOS 15.5, Chrome 138
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Trainer model and firmware
+      description: Required for physical hardware; write “not applicable” for the simulator.
+      placeholder: Wahoo KICKR CORE, firmware x.y.z
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include commands, state transitions, and whether another trainer app was connected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      description: Remove Bluetooth identifiers, tokens, and personal workout data.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety and duplicate checks
+      options:
+        - label: I searched existing issues for this behavior.
+          required: true
+        - label: This report contains no secrets, identifying Bluetooth data, or private workout data.
+          required: true
+        - label: I used private vulnerability reporting instead if this could be exploited.
+          required: true

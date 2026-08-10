@@ -24,11 +24,14 @@
     "dev": "npm run build:library && npm run dev --workspace @open-trainer/trainer-lab",
     "test": "npm run test --workspace @open-trainer/ftms",
     "typecheck": "npm run build:library && npm run typecheck --workspace @open-trainer/trainer-lab",
+    "verify:package": "node scripts/verify-package.mjs",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@changesets/cli": "2.31.1",
     "@types/web-bluetooth": "^0.0.21",
+    "publint": "0.3.23",
     "typescript": "^5.9.2",
     "vite": "^7.1.1",
     "vitest": "^3.2.4"

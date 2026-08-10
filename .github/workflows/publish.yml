@@ -88,8 +88,8 @@ jobs:
       - name: Build workspace
         run: npm run build
 
-      - name: Verify package contents
-        run: npm pack --dry-run --workspace @open-trainer/ftms
+      - name: Verify packed package
+        run: npm run verify:package
 
       - name: Publish package
         if: inputs.mode == 'publish'

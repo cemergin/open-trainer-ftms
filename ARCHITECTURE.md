@@ -72,7 +72,6 @@ For each device record feature flags, characteristic availability, notification 
 
 ## Packaging work remaining
 
-- Add `publint` and `@arethetypeswrong/cli` to CI when the project has its permanent repository.
-- Test the packed tarball in small Vite and Node-resolution consumer fixtures.
 - Publish through npm trusted publishing with provenance once the package name and release workflow are finalized.
+- Validate the first registry-published version from a fresh browser application in addition to the installed-tarball Node smoke test.
 - Keep the version below `1.0.0` until the public API survives real sessions on at least two trainer families.

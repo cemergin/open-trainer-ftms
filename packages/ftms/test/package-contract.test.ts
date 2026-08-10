@@ -25,6 +25,7 @@ describe("published package contract", () => {
       files?: string[];
       exports?: Record<string, unknown>;
       dependencies?: Record<string, string>;
+      engines?: { node?: string };
       publishConfig?: { access?: string };
     };
 
@@ -39,6 +40,7 @@ describe("published package contract", () => {
     expect(packageJson.files).toContain("LICENSE");
     expect(packageJson.files).toContain("src");
     expect(packageJson.dependencies).toHaveProperty("@types/web-bluetooth");
+    expect(packageJson.engines?.node).toBe(">=20.19.0");
     expect(packageJson.publishConfig?.access).toBe("public");
   });
 });

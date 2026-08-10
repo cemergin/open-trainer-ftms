@@ -1,5 +1,7 @@
 # Open Trainer — phase 1
 
+[![CI](https://github.com/cemergin/open-trainer-ftms/actions/workflows/ci.yml/badge.svg)](https://github.com/cemergin/open-trainer-ftms/actions/workflows/ci.yml)
+
 This repository contains the first, deliberately narrow slice of the project:
 
 1. `@open-trainer/ftms`, a browser-oriented FTMS smart-trainer library.
@@ -29,6 +31,7 @@ Open `http://127.0.0.1:4173`. Choose **Use simulator** to exercise the entire pu
 npm test
 npm run typecheck
 npm run build
+npm run verify:package
 ```
 
 The library follows a test-first workflow. Its current suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries.
@@ -39,7 +42,7 @@ The **Publish npm package** GitHub Action is manual and defaults to a dry run. I
 
 For a real release:
 
-1. Bump `packages/ftms/package.json` and `package-lock.json` in a reviewed commit on `main`. npm versions cannot be overwritten.
+1. Merge the Changesets-generated version pull request described below. npm versions cannot be overwritten.
 2. In the npm package settings, configure a GitHub Actions trusted publisher for user `cemergin`, repository `open-trainer-ftms`, workflow file `publish.yml`, environment `npm`, and allow the `npm publish` action.
 3. Optionally protect the repository's `npm` environment with required reviewers.
 4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.

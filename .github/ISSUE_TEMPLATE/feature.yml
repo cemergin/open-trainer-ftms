@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a trainer capability, API improvement, or testing enhancement.
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user or developer need before proposing an API.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include the ideal semantic API; raw UUID or packet details can follow separately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Protocol and hardware evidence
+      description: Link the relevant FTMS requirement or provide sanitized model/firmware observations when applicable.
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and compatibility considerations
+      description: Explain resistance-control, fallback, or cross-trainer implications.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the architecture document.
+          required: true
+        - label: This request does not require a vendor-specific assumption when a capability check would work.
+          required: true
