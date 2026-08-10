@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AsyncOperationQueue } from "../src/gatt-operation-queue.js";
+import { FTMS_ERROR_CODE } from "../src/errors.js";
 
 describe("AsyncOperationQueue", () => {
   it("does not overlap operations", async () => {
@@ -39,5 +40,27 @@ describe("AsyncOperationQueue", () => {
 
     await expect(first).rejects.toThrow("expected failure");
     await expect(second).resolves.toBe(2);
+  });
+
+  it("never revives stale operations when a closed queue is reopened", async () => {
+    const queue = new AsyncOperationQueue();
+    let release: (() => void) | undefined;
+    const first = queue.run(
+      () =>
+        new Promise<number>((resolve) => {
+          release = () => resolve(1);
+        }),
+    );
+    const stale = queue.run(async () => 2);
+    await Promise.resolve();
+
+    queue.close("disconnected");
+    queue.reopen();
+    const current = queue.run(async () => 3);
+    release?.();
+
+    await expect(first).resolves.toBe(1);
+    await expect(stale).rejects.toMatchObject({ code: FTMS_ERROR_CODE.operationClosed });
+    await expect(current).resolves.toBe(3);
   });
 });

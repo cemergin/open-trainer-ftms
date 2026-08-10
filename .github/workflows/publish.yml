@@ -59,10 +59,10 @@ jobs:
           fi
 
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -77,24 +77,22 @@ jobs:
           npm --version
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
-      - name: Run tests
-        run: npm test
+      - name: Run the production verification pipeline
+        run: npm run verify
 
-      - name: Type-check workspace
-        run: npm run typecheck
+      - name: Audit the complete dependency graph
+        run: npm audit --audit-level=high
 
-      - name: Build workspace
-        run: npm run build
-
-      - name: Verify packed package
-        run: npm run verify:package
+      - name: Validate release channel hardware gate
+        env:
+          NPM_DIST_TAG: ${{ inputs.dist_tag }}
+        run: node scripts/assert-release-ready.mjs "$NPM_DIST_TAG"
 
       - name: Publish package
         if: inputs.mode == 'publish'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_DIST_TAG: ${{ inputs.dist_tag }}
         run: npm publish --workspace @open-trainer/ftms --access public --provenance --tag "$NPM_DIST_TAG"
 

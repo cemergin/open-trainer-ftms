@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10140f" />
-    <meta name="description" content="A local companion for inspecting and controlling Bluetooth FTMS smart trainers." />
+    <meta
+      name="description"
+      content="A local companion for inspecting and controlling Bluetooth FTMS smart trainers."
+    />
     <title>Open Trainer Companion</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
@@ -14,7 +17,10 @@
         <div>
           <p class="eyebrow">Open Trainer / FTMS debugger</p>
           <h1>Trainer Companion</h1>
-          <p class="lede">Inspect the library’s reactive state, verify telemetry, and safely exercise trainer controls.</p>
+          <p class="lede">
+            Inspect the library’s reactive state, verify telemetry, and safely exercise trainer
+            controls.
+          </p>
         </div>
         <div class="connection-card">
           <span id="status-dot" class="status-dot" aria-hidden="true"></span>
@@ -64,7 +70,9 @@
               <p class="eyebrow">Last 60 samples</p>
               <h2>Live response</h2>
             </div>
-            <div class="legend"><span class="power-key"></span>Power <span class="cadence-key"></span>Cadence</div>
+            <div class="legend">
+              <span class="power-key"></span>Power <span class="cadence-key"></span>Cadence
+            </div>
           </div>
           <canvas id="chart" aria-label="Power and cadence chart"></canvas>
         </article>
@@ -111,7 +119,9 @@
             <button class="button secondary" type="submit" disabled>Set grade</button>
           </form>
 
-          <p class="safety-note">Begin with a low power target. Keep the bike occupied whenever control is active.</p>
+          <p class="safety-note">
+            Begin with a low power target. Keep the bike occupied whenever control is active.
+          </p>
         </article>
       </section>
 
@@ -123,7 +133,9 @@
               <h2>Capabilities</h2>
             </div>
           </div>
-          <div id="capabilities" class="capabilities empty-state">Connect a trainer to inspect its FTMS features.</div>
+          <div id="capabilities" class="capabilities empty-state">
+            Connect a trainer to inspect its FTMS features.
+          </div>
         </article>
 
         <article class="panel snapshot-panel">
@@ -135,12 +147,25 @@
             <button id="copy-snapshot" class="button ghost">Copy JSON</button>
           </div>
           <dl class="state-grid">
-            <div><dt>Connection</dt><dd id="connection-state">disconnected</dd></div>
-            <div><dt>Control</dt><dd id="control-state">unavailable</dd></div>
-            <div><dt>Activity</dt><dd id="activity-state">idle</dd></div>
-            <div><dt>Packet age</dt><dd id="packet-age">—</dd></div>
+            <div>
+              <dt>Connection</dt>
+              <dd id="connection-state">disconnected</dd>
+            </div>
+            <div>
+              <dt>Control</dt>
+              <dd id="control-state">unavailable</dd>
+            </div>
+            <div>
+              <dt>Activity</dt>
+              <dd id="activity-state">idle</dd>
+            </div>
+            <div>
+              <dt>Packet age</dt>
+              <dd id="packet-age">—</dd>
+            </div>
           </dl>
-          <pre id="snapshot" class="snapshot" aria-live="polite">{
+          <pre id="snapshot" class="snapshot" aria-live="polite">
+{
   "telemetry": null
 }</pre>
         </article>
