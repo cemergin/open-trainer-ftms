@@ -1,6 +1,6 @@
 {
   "name": "@open-trainer/ftms",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A transport-independent Bluetooth FTMS controller for browser-based smart trainer applications.",
   "type": "module",
   "sideEffects": false,
@@ -17,7 +17,12 @@
     "url": "https://github.com/cemergin/open-trainer-ftms/issues"
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
