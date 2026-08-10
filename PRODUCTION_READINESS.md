@@ -10,10 +10,20 @@ The repository separates software readiness from physical-hardware qualification
 - Node 20 and 22 verification plus Node 24 package verification.
 - Clean `npm ci`, complete dependency-graph audit, package build, consumer compilation, `publint`, Are the Types Wrong, clean tarball installation, and runtime import smoke tests.
 - Pull requests that change the publishable package must include a Changeset; dependency installation in automation disables lifecycle scripts.
-- Immutable commit SHAs for GitHub Actions, dependency review, code scanning, private vulnerability reporting, and Dependabot.
+- Immutable commit SHAs for GitHub Actions, dependency review, and Dependabot configuration.
 - Changesets-managed versions and a manual OIDC/provenance publish workflow.
 
 Run the same pipeline locally with `npm run verify`.
+
+## Repository controls
+
+Before calling the hosted project operationally production-ready, verify these GitHub settings from an authenticated owner session:
+
+- Protect `main`; require the CI matrix, quality, packed-package, and dependency-review checks; require conversation resolution; block force pushes and deletion.
+- Enable code scanning default setup, Dependabot security updates, secret scanning, push protection, non-provider patterns, and validity checks.
+- Restrict the `npm` environment to protected branches and require a maintainer approval for deployment.
+
+Repository files cannot activate or prove these owner-level settings. They are a separate deployment gate, not an implied property of a green local build.
 
 ## Enforced hardware gate
 

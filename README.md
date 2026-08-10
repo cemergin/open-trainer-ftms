@@ -41,7 +41,7 @@ For a real release:
 
 1. Merge the Changesets-generated version pull request described below. npm versions cannot be overwritten.
 2. In the npm package settings, configure a GitHub Actions trusted publisher for user `cemergin`, repository `open-trainer-ftms`, workflow file `publish.yml`, environment `npm`, and allow the `npm publish` action.
-3. Optionally protect the repository's `npm` environment with required reviewers.
+3. Restrict the repository's `npm` environment to protected branches and require a maintainer approval.
 4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.
 
 The `latest` channel is additionally blocked until committed physical-trainer evidence passes [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The `next` channel is explicitly for prerelease evaluation.
