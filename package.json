@@ -24,6 +24,7 @@
     "dev": "npm run build:library && npm run dev --workspace @open-trainer/trainer-lab",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prelint": "npm run build:library",
     "lint": "eslint . --max-warnings 0",
     "release:check": "node scripts/assert-release-ready.mjs latest",
     "release:check:next": "node scripts/assert-release-ready.mjs next",
