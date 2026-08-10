@@ -33,6 +33,21 @@ npm run build
 
 The library follows a test-first workflow. Its current suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries.
 
+## Manual npm release
+
+The **Publish npm package** GitHub Action is manual and defaults to a dry run. It installs dependencies from the lockfile, runs the complete test/type/build suite, and verifies the package archive before any publish step can execute.
+
+For a real release:
+
+1. Bump `packages/ftms/package.json` and `package-lock.json` in a reviewed commit on `main`. npm versions cannot be overwritten.
+2. In the npm package settings, configure a GitHub Actions trusted publisher for user `cemergin`, repository `open-trainer-ftms`, workflow file `publish.yml`, environment `npm`, and allow the `npm publish` action.
+3. Optionally protect the repository's `npm` environment with required reviewers.
+4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.
+
+The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. If an initial token-authenticated publish is required before npm will let you configure the trusted publisher, add a narrowly scoped automation token as the `NPM_TOKEN` secret on the `npm` environment, publish once, then remove the secret after trusted publishing is configured.
+
+See npm's [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/) for the one-time registry configuration.
+
 ## First real-trainer session
 
 1. Update the trainer in the Wahoo app, then fully close Wahoo, Zwift, and other trainer applications.

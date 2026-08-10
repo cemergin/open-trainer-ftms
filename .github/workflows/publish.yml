@@ -1,0 +1,103 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate the release or publish it to npm
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
+      dist_tag:
+        description: npm distribution tag
+        required: true
+        default: next
+        type: choice
+        options:
+          - next
+          - latest
+      confirmation:
+        description: For publish mode, type "publish @open-trainer/ftms"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm-package
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and ${{ inputs.mode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@open-trainer/ftms
+
+    steps:
+      - name: Validate release request
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Releases must run from the default branch ($DEFAULT_BRANCH)."
+            exit 1
+          fi
+
+          if [ "$RELEASE_MODE" = "publish" ] && [ "$CONFIRMATION" != "publish @open-trainer/ftms" ]; then
+            echo "::error::Publish confirmation did not match the required text."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global npm@11
+
+      - name: Show release toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Type-check workspace
+        run: npm run typecheck
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Verify package contents
+        run: npm pack --dry-run --workspace @open-trainer/ftms
+
+      - name: Publish package
+        if: inputs.mode == 'publish'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_DIST_TAG: ${{ inputs.dist_tag }}
+        run: npm publish --workspace @open-trainer/ftms --access public --provenance --tag "$NPM_DIST_TAG"
+
+      - name: Summarize dry run
+        if: inputs.mode == 'dry-run'
+        run: echo "Package validation completed; nothing was published." >> "$GITHUB_STEP_SUMMARY"
