@@ -9,10 +9,7 @@ export interface FtmsTransport {
   disconnect(): Promise<void>;
   read(characteristic: number): Promise<DataView>;
   write(characteristic: number, value: Uint8Array): Promise<void>;
-  subscribe(
-    characteristic: number,
-    listener: (value: DataView) => void,
-  ): Promise<Unsubscribe>;
+  subscribe(characteristic: number, listener: (value: DataView) => void): Promise<Unsubscribe>;
   onDisconnect(listener: () => void): Unsubscribe;
 }
 
@@ -56,23 +53,11 @@ export interface TrainerTelemetry {
   remainingTimeSeconds?: number;
 }
 
-export type TrainerConnectionState =
-  | "disconnected"
-  | "connecting"
-  | "ready"
-  | "error";
+export type TrainerConnectionState = "disconnected" | "connecting" | "ready" | "error";
 
-export type TrainerControlState =
-  | "unavailable"
-  | "requesting"
-  | "owned"
-  | "revoked";
+export type TrainerControlState = "unavailable" | "requesting" | "owned" | "revoked";
 
-export type TrainerActivityState =
-  | "idle"
-  | "running"
-  | "paused"
-  | "stopping";
+export type TrainerActivityState = "idle" | "running" | "paused" | "stopping";
 
 export const CONTROL_RESULT = {
   success: 0x01,
@@ -89,6 +74,36 @@ export interface ControlPointResponse {
   responseParameters: Uint8Array;
 }
 
+export type MachineStatusKind =
+  | "reset"
+  | "stopped-or-paused-by-user"
+  | "stopped-by-safety-key"
+  | "started-or-resumed-by-user"
+  | "target-speed-changed"
+  | "target-inclination-changed"
+  | "target-resistance-changed"
+  | "target-power-changed"
+  | "target-heart-rate-changed"
+  | "target-energy-changed"
+  | "target-steps-changed"
+  | "target-strides-changed"
+  | "target-distance-changed"
+  | "target-training-time-changed"
+  | "target-time-two-heart-rate-zones-changed"
+  | "target-time-three-heart-rate-zones-changed"
+  | "target-time-five-heart-rate-zones-changed"
+  | "simulation-parameters-changed"
+  | "wheel-circumference-changed"
+  | "spin-down-status"
+  | "control-permission-lost"
+  | "unknown";
+
+export interface MachineStatus {
+  readonly opcode: number;
+  readonly kind: MachineStatusKind;
+  readonly parameters: Uint8Array;
+}
+
 export interface SimulationParameters {
   /** Metres per second. Negative values are a tailwind. */
   windSpeedMps?: number;
@@ -100,9 +115,16 @@ export interface SimulationParameters {
   windResistanceKgPerM?: number;
 }
 
+/** FTMS 1.0 used UINT8; FTMS 1.0.1 corrected target resistance to SINT16. */
+export type ResistanceControlFormat = "sint16" | "uint8";
+
 export interface TrainerOptions {
   commandTimeoutMs?: number;
   autoStartTelemetry?: boolean;
+  /** Enforce characteristics required by advertised FTMS capabilities. Defaults to true. */
+  strictProtocol?: boolean;
+  /** Defaults to the FTMS 1.0.1 SINT16 format. Use `uint8` only for legacy FTMS 1.0 devices. */
+  resistanceControlFormat?: ResistanceControlFormat;
 }
 
 export interface Trainer {
@@ -113,7 +135,10 @@ export interface Trainer {
   readonly capabilities: StateValue<TrainerCapabilities | null>;
   readonly telemetry: StateValue<TrainerTelemetry | null>;
   readonly controlResponses: Stream<ControlPointResponse>;
+  /** Raw Machine Status bytes, retained for protocol extensions and diagnostics. */
   readonly machineStatus: Stream<Uint8Array>;
+  /** Parsed lifecycle statuses. Unknown opcodes are preserved rather than discarded. */
+  readonly machineStatusEvents: Stream<MachineStatus>;
   readonly errors: Stream<Error>;
 
   connect(): Promise<TrainerCapabilities>;

@@ -22,18 +22,35 @@
     "changeset": "changeset",
     "changeset:status": "changeset status",
     "dev": "npm run build:library && npm run dev --workspace @open-trainer/trainer-lab",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings 0",
+    "release:check": "node scripts/assert-release-ready.mjs latest",
+    "release:check:next": "node scripts/assert-release-ready.mjs next",
     "test": "npm run test --workspace @open-trainer/ftms",
+    "test:coverage": "npm run test:coverage --workspace @open-trainer/ftms",
+    "test:release-gate": "node --test scripts/assert-release-ready.test.mjs",
     "typecheck": "npm run build:library && npm run typecheck --workspace @open-trainer/trainer-lab",
+    "verify": "npm run format:check && npm run lint && npm run test:coverage && npm run test:release-gate && npm run typecheck && npm run build && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@changesets/cli": "2.31.1",
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.1",
     "@types/web-bluetooth": "^0.0.21",
+    "@vitest/coverage-v8": "4.1.10",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "eslint": "10.8.1",
+    "globals": "17.9.0",
+    "prettier": "3.9.6",
     "publint": "0.3.23",
     "typescript": "^5.9.2",
+    "typescript-eslint": "8.67.0",
     "vite": "^7.1.1",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.10"
   }
 }

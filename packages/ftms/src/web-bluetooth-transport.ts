@@ -1,4 +1,4 @@
-import { FtmsError } from "./errors.js";
+import { FTMS_ERROR_CODE, FtmsError, FtmsStateError, normalizeFtmsError } from "./errors.js";
 import { AsyncOperationQueue } from "./gatt-operation-queue.js";
 import { EventSource } from "./reactive.js";
 import type { FtmsTransport, Unsubscribe } from "./types.js";
@@ -20,6 +20,8 @@ export class WebBluetoothFtmsTransport implements FtmsTransport {
 
   #device: BluetoothDevice | undefined;
   #service: BluetoothRemoteGATTService | undefined;
+  #connectPromise: Promise<void> | undefined;
+  #disconnectPromise: Promise<void> | undefined;
 
   constructor(private readonly options: WebBluetoothTransportOptions = {}) {
     this.#device = options.device;
@@ -34,75 +36,171 @@ export class WebBluetoothFtmsTransport implements FtmsTransport {
   }
 
   async connect(): Promise<void> {
-    if (!globalThis.navigator?.bluetooth) {
-      throw new FtmsError("Web Bluetooth is unavailable. Use Chrome or Edge on a supported device.");
+    if (this.isConnected) return;
+    if (this.#connectPromise) return this.#connectPromise;
+    const operation = this.#connectAfterDisconnect();
+    this.#connectPromise = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.#connectPromise === operation) this.#connectPromise = undefined;
     }
+  }
 
+  async #connectAfterDisconnect(): Promise<void> {
+    if (this.#disconnectPromise) await this.#disconnectPromise;
     this.#operations.reopen();
 
-    if (!this.#device) {
-      const filters: BluetoothLEScanFilter[] = this.options.namePrefix
-        ? [{ namePrefix: this.options.namePrefix }]
-        : [{ services: [FTMS_UUIDS.service] }];
+    let device = this.#device;
+    try {
+      if (!device) {
+        const runtime = globalThis as unknown as {
+          navigator?: { bluetooth?: Bluetooth };
+        };
+        const bluetooth = runtime.navigator?.bluetooth;
+        if (!bluetooth) {
+          throw new FtmsError(
+            "Web Bluetooth is unavailable. Use Chrome or Edge on a supported device.",
+            { code: FTMS_ERROR_CODE.bluetoothUnavailable },
+          );
+        }
+        const filters: BluetoothLEScanFilter[] = this.options.namePrefix
+          ? [{ namePrefix: this.options.namePrefix }]
+          : [{ services: [FTMS_UUIDS.service] }];
 
-      this.#device = await globalThis.navigator.bluetooth.requestDevice({
-        filters,
-        optionalServices: [FTMS_UUIDS.service],
-      });
+        device = await bluetooth.requestDevice({
+          filters,
+          optionalServices: [FTMS_UUIDS.service],
+        });
+        this.#device = device;
+      }
+
+      if (!device.gatt) {
+        throw new FtmsStateError("The selected trainer has no Bluetooth GATT server.");
+      }
+      device.addEventListener("gattserverdisconnected", this.#handleDisconnect);
+      const server = await device.gatt.connect();
+      this.#service = await server.getPrimaryService(FTMS_UUIDS.service);
+      this.#characteristics.clear();
+    } catch (error) {
+      device?.removeEventListener("gattserverdisconnected", this.#handleDisconnect);
+      this.#service = undefined;
+      this.#characteristics.clear();
+      this.#operations.close("Bluetooth connection setup failed.");
+      if (device?.gatt?.connected) device.gatt.disconnect();
+      throw normalizeFtmsError(
+        error,
+        "Connecting to the trainer's FTMS service failed.",
+        FTMS_ERROR_CODE.transportFailure,
+      );
     }
-
-    if (!this.#device.gatt) throw new FtmsError("The selected trainer has no Bluetooth GATT server.");
-    this.#device.addEventListener("gattserverdisconnected", this.#handleDisconnect);
-    const server = await this.#device.gatt.connect();
-    this.#service = await server.getPrimaryService(FTMS_UUIDS.service);
-    this.#characteristics.clear();
   }
 
   async disconnect(): Promise<void> {
+    if (this.#disconnectPromise) return this.#disconnectPromise;
+    const operation = this.#disconnectAfterConnect();
+    this.#disconnectPromise = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.#disconnectPromise === operation) this.#disconnectPromise = undefined;
+    }
+  }
+
+  async #disconnectAfterConnect(): Promise<void> {
+    if (this.#connectPromise) {
+      try {
+        await this.#connectPromise;
+      } catch {
+        // A failed connection attempt already rolls itself back.
+      }
+    }
     const wasConnected = this.isConnected;
     this.#device?.removeEventListener("gattserverdisconnected", this.#handleDisconnect);
-    this.#device?.gatt?.disconnect();
-    this.#service = undefined;
-    this.#characteristics.clear();
-    this.#operations.close("Bluetooth transport disconnected.");
-    if (wasConnected) this.#disconnectSignal.emit();
+    let failure: unknown;
+    let didFail = false;
+    try {
+      this.#device?.gatt?.disconnect();
+    } catch (error) {
+      failure = error;
+      didFail = true;
+    } finally {
+      this.#service = undefined;
+      this.#characteristics.clear();
+      this.#operations.close("Bluetooth transport disconnected.");
+      if (wasConnected) this.#disconnectSignal.emit();
+    }
+    if (didFail) {
+      throw normalizeFtmsError(
+        failure,
+        "Disconnecting from the trainer failed.",
+        FTMS_ERROR_CODE.transportFailure,
+      );
+    }
   }
 
   async read(characteristic: number): Promise<DataView> {
-    return this.#operations.run(async () => {
-      const remote = await this.#getCharacteristic(characteristic);
-      return cloneDataView(await remote.readValue());
-    });
+    try {
+      return await this.#operations.run(async () => {
+        const remote = await this.#getCharacteristic(characteristic);
+        return cloneDataView(await remote.readValue());
+      });
+    } catch (error) {
+      throw normalizeFtmsError(
+        error,
+        `Reading Bluetooth characteristic 0x${characteristic.toString(16)} failed.`,
+        FTMS_ERROR_CODE.transportFailure,
+      );
+    }
   }
 
   async write(characteristic: number, value: Uint8Array): Promise<void> {
-    await this.#operations.run(async () => {
-      const remote = await this.#getCharacteristic(characteristic);
-      const payload = new ArrayBuffer(value.byteLength);
-      new Uint8Array(payload).set(value);
-      await remote.writeValueWithResponse(payload);
-    });
+    const payload = new ArrayBuffer(value.byteLength);
+    new Uint8Array(payload).set(value);
+    try {
+      await this.#operations.run(async () => {
+        const remote = await this.#getCharacteristic(characteristic);
+        await remote.writeValueWithResponse(payload);
+      });
+    } catch (error) {
+      throw normalizeFtmsError(
+        error,
+        `Writing Bluetooth characteristic 0x${characteristic.toString(16)} failed.`,
+        FTMS_ERROR_CODE.transportFailure,
+      );
+    }
   }
 
   async subscribe(
     characteristic: number,
     listener: (value: DataView) => void,
   ): Promise<Unsubscribe> {
-    const { remote, handler } = await this.#operations.run(async () => {
-      const remote = await this.#getCharacteristic(characteristic);
-      const handler = (): void => {
-        if (remote.value) listener(cloneDataView(remote.value));
-      };
+    let subscription: { remote: BluetoothRemoteGATTCharacteristic; handler: () => void };
+    try {
+      subscription = await this.#operations.run(async () => {
+        const remote = await this.#getCharacteristic(characteristic);
+        const handler = (): void => {
+          if (remote.value) listener(cloneDataView(remote.value));
+        };
 
-      remote.addEventListener("characteristicvaluechanged", handler);
-      try {
-        await remote.startNotifications();
-      } catch (error) {
-        remote.removeEventListener("characteristicvaluechanged", handler);
-        throw error;
-      }
-      return { remote, handler };
-    });
+        remote.addEventListener("characteristicvaluechanged", handler);
+        try {
+          await remote.startNotifications();
+        } catch (error) {
+          remote.removeEventListener("characteristicvaluechanged", handler);
+          throw error;
+        }
+        return { remote, handler };
+      });
+    } catch (error) {
+      throw normalizeFtmsError(
+        error,
+        `Subscribing to Bluetooth characteristic 0x${characteristic.toString(16)} failed.`,
+        FTMS_ERROR_CODE.transportFailure,
+      );
+    }
+
+    const { remote, handler } = subscription;
 
     return () => {
       remote.removeEventListener("characteristicvaluechanged", handler);
@@ -115,14 +213,18 @@ export class WebBluetoothFtmsTransport implements FtmsTransport {
   }
 
   readonly #handleDisconnect = (): void => {
+    const hadConnection = Boolean(this.#service);
+    this.#device?.removeEventListener("gattserverdisconnected", this.#handleDisconnect);
     this.#service = undefined;
     this.#characteristics.clear();
     this.#operations.close("Bluetooth connection lost.");
-    this.#disconnectSignal.emit();
+    if (hadConnection) this.#disconnectSignal.emit();
   };
 
   async #getCharacteristic(uuid: number): Promise<BluetoothRemoteGATTCharacteristic> {
-    if (!this.#service) throw new FtmsError("The trainer is not connected.");
+    if (!this.#service) {
+      throw new FtmsStateError("The trainer is not connected.", FTMS_ERROR_CODE.notConnected);
+    }
     const cached = this.#characteristics.get(uuid);
     if (cached) return cached;
     const characteristic = await this.#service.getCharacteristic(uuid);
