@@ -86,6 +86,9 @@ jobs:
       - name: Run coverage gates
         run: npm run test:coverage
 
+      - name: Test Trainer Lab qualification reports
+        run: npm run test:lab
+
       - name: Test release gates
         run: npm run test:release-gate
 

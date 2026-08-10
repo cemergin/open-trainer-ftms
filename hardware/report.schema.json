@@ -7,19 +7,24 @@
     "schemaVersion",
     "recordedAt",
     "packageVersion",
+    "sourceCommit",
+    "runtimeFingerprint",
     "hardware",
     "client",
+    "testSession",
     "checks",
     "passed"
   ],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "recordedAt": { "type": "string", "format": "date-time" },
     "packageVersion": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "runtimeFingerprint": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
     "hardware": {
       "type": "object",
       "additionalProperties": false,
@@ -34,21 +39,59 @@
     "client": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["operatingSystem", "browser", "browserVersion"],
+      "required": ["operatingSystem", "browser", "browserVersion", "secureContext"],
       "properties": {
         "operatingSystem": { "type": "string", "minLength": 1 },
         "browser": { "type": "string", "minLength": 1 },
-        "browserVersion": { "type": "string", "minLength": 1 }
+        "browserVersion": { "type": "string", "minLength": 1 },
+        "secureContext": { "type": "boolean" }
+      }
+    },
+    "testSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "startedAt",
+        "realConnectionCount",
+        "telemetrySamples",
+        "controlResponses",
+        "errorCount"
+      ],
+      "properties": {
+        "source": { "const": "trainer-lab" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "realConnectionCount": { "type": "integer", "minimum": 0 },
+        "telemetrySamples": { "type": "integer", "minimum": 0 },
+        "controlResponses": { "type": "integer", "minimum": 0 },
+        "errorCount": { "type": "integer", "minimum": 0 }
       }
     },
     "checks": {
       "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "passed"],
+        "required": ["id", "passed", "notes"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
+          "id": {
+            "enum": [
+              "connect-reconnect-10",
+              "telemetry-power-cadence",
+              "acquire-control",
+              "erg-low-medium-high",
+              "resistance-control",
+              "simulation-grade",
+              "pause-resume",
+              "stop",
+              "control-loss",
+              "competing-app",
+              "power-cycle",
+              "stop-after-command-traffic"
+            ]
+          },
           "passed": { "type": "boolean" },
           "notes": { "type": "string" }
         }

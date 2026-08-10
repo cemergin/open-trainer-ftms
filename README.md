@@ -44,7 +44,7 @@ For a real release:
 3. Restrict the repository's `npm` environment to protected branches and require a maintainer approval.
 4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.
 
-The `latest` channel is additionally blocked until committed physical-trainer evidence passes [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The `next` channel is explicitly for prerelease evaluation.
+The `latest` channel is additionally blocked until committed physical-trainer evidence passes [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). Contributors qualify devices with the repeatable [physical trainer integration guide](./DEVICE_INTEGRATION_GUIDE.md). The `next` channel is explicitly for prerelease evaluation.
 
 The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. It deliberately has no long-lived npm token fallback: trusted publishing must be configured before the first automated release.
 
@@ -63,6 +63,8 @@ Published versions are managed with [Changesets](https://github.com/changesets/c
 Changesets combine multiple pending entries and apply the highest required bump. Documentation, tests, CI, and unpublished Trainer Lab changes do not need a changeset. The versioning bot never publishes to npm.
 
 ## First real-trainer session
+
+Trainer Lab now contains the complete 12-step device qualification workflow and exports the release-gate report. Read [DEVICE_INTEGRATION_GUIDE.md](./DEVICE_INTEGRATION_GUIDE.md) before the first physical command.
 
 1. Update the trainer in the Wahoo app, then fully close Wahoo, Zwift, and other trainer applications.
 2. Put the bike on the trainer and plug the trainer into power.

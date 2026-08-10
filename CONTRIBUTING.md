@@ -37,6 +37,6 @@ Remove device identifiers and personal workout data from Bluetooth captures befo
 
 Commits should be small enough to review and use an imperative summary. Changesets calculate package versions and maintain the changelog through a release pull request. Publishing remains a separate, manual GitHub Action with an npm environment gate.
 
-Changes to physical compatibility evidence must follow [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The `latest` release channel rejects missing or incomplete evidence.
+Changes to physical compatibility evidence must follow the [device integration guide](./DEVICE_INTEGRATION_GUIDE.md) and [hardware validation policy](./HARDWARE_VALIDATION.md). The `latest` release channel rejects missing, stale, simulated, or incomplete evidence.
 
 Security vulnerabilities belong in GitHub private vulnerability reporting, not a public issue. See [SECURITY.md](./SECURITY.md).

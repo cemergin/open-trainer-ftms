@@ -37,10 +37,19 @@
           <h2>Connection</h2>
           <p>Use the simulator first, then connect a real FTMS trainer in Chrome or Edge.</p>
         </div>
-        <div class="button-row">
-          <button id="connect-simulator" class="button secondary">Use simulator</button>
-          <button id="connect-real" class="button primary">Connect trainer</button>
-          <button id="disconnect" class="button ghost" disabled>Disconnect</button>
+        <div class="connection-actions">
+          <label class="protocol-setting" for="resistance-format">
+            Resistance command encoding
+            <select id="resistance-format">
+              <option value="sint16">FTMS 1.0.1 · modern SINT16</option>
+              <option value="uint8">FTMS 1.0 · verified legacy UINT8</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="connect-simulator" class="button secondary">Use simulator</button>
+            <button id="connect-real" class="button primary">Connect trainer</button>
+            <button id="disconnect" class="button ghost" disabled>Disconnect</button>
+          </div>
         </div>
       </section>
 
@@ -90,6 +99,7 @@
             <button id="request-control" class="button secondary" disabled>1. Take control</button>
             <button id="start" class="button secondary" disabled>2. Start</button>
             <button id="pause" class="button ghost" disabled>Pause</button>
+            <button id="reset" class="button ghost" disabled>Reset</button>
           </div>
 
           <form id="power-form" class="control-form">
@@ -168,6 +178,107 @@
 {
   "telemetry": null
 }</pre>
+        </article>
+
+        <article class="panel qualification-panel full-width">
+          <div class="section-heading qualification-heading">
+            <div>
+              <p class="eyebrow">Physical acceptance workflow</p>
+              <h2>Device qualification</h2>
+              <p>
+                Use this for any FTMS trainer. Draft metadata and notes stay in this browser for the
+                current runtime; safety, pass marks, and live counters reset on reload.
+              </p>
+            </div>
+            <output id="qualification-progress" class="progress-badge">0 / 12 passed</output>
+          </div>
+
+          <label class="safety-acknowledgement" for="qualification-safety">
+            <input id="qualification-safety" type="checkbox" />
+            <span>
+              <strong>I completed the safety setup.</strong>
+              The bike is secure, the first command will be unoccupied, other trainer apps are
+              closed, and trainer power is within reach.
+            </span>
+          </label>
+
+          <div class="qualification-metadata">
+            <label for="qualification-manufacturer">
+              Manufacturer
+              <input id="qualification-manufacturer" autocomplete="organization" />
+            </label>
+            <label for="qualification-model">
+              Model
+              <input id="qualification-model" />
+            </label>
+            <label for="qualification-firmware">
+              Firmware
+              <input id="qualification-firmware" />
+            </label>
+            <label for="qualification-os">
+              Operating system
+              <input id="qualification-os" />
+            </label>
+            <label for="qualification-browser">
+              Browser
+              <input id="qualification-browser" />
+            </label>
+            <label for="qualification-browser-version">
+              Browser version
+              <input id="qualification-browser-version" />
+            </label>
+          </div>
+
+          <dl class="qualification-counters">
+            <div>
+              <dt>Library</dt>
+              <dd id="qualification-package-version">—</dd>
+            </div>
+            <div>
+              <dt>Secure context</dt>
+              <dd id="qualification-secure-context">—</dd>
+            </div>
+            <div>
+              <dt>Real connections</dt>
+              <dd id="qualification-connections">0 / 10</dd>
+            </div>
+            <div>
+              <dt>Telemetry samples</dt>
+              <dd id="qualification-telemetry">0</dd>
+            </div>
+            <div>
+              <dt>Control responses</dt>
+              <dd id="qualification-responses">0</dd>
+            </div>
+            <div>
+              <dt>Errors observed</dt>
+              <dd id="qualification-errors">0</dd>
+            </div>
+          </dl>
+
+          <ol id="qualification-checks" class="qualification-checks"></ol>
+
+          <label class="qualification-general-notes" for="qualification-notes">
+            General sanitized notes
+            <textarea
+              id="qualification-notes"
+              rows="3"
+              placeholder="Optional context that applies to the whole run. Never include serial numbers, Bluetooth addresses, account data, or workout history."
+            ></textarea>
+          </label>
+
+          <div class="qualification-footer">
+            <div>
+              <strong id="qualification-readiness-title">Report is not ready</strong>
+              <ul id="qualification-blockers" class="qualification-blockers"></ul>
+            </div>
+            <div class="button-row">
+              <button id="qualification-reset" class="button ghost">Clear qualification</button>
+              <button id="qualification-export" class="button primary" disabled>
+                Export passing report
+              </button>
+            </div>
+          </div>
         </article>
 
         <article class="panel log-panel full-width">
