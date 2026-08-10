@@ -19,11 +19,15 @@
     "build": "npm run build:library && npm run build:lab",
     "build:library": "npm run build --workspace @open-trainer/ftms",
     "build:lab": "npm run build --workspace @open-trainer/trainer-lab",
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
     "dev": "npm run build:library && npm run dev --workspace @open-trainer/trainer-lab",
     "test": "npm run test --workspace @open-trainer/ftms",
-    "typecheck": "npm run build:library && npm run typecheck --workspace @open-trainer/trainer-lab"
+    "typecheck": "npm run build:library && npm run typecheck --workspace @open-trainer/trainer-lab",
+    "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts"
   },
   "devDependencies": {
+    "@changesets/cli": "2.31.1",
     "@types/web-bluetooth": "^0.0.21",
     "typescript": "^5.9.2",
     "vite": "^7.1.1",

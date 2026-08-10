@@ -48,6 +48,18 @@ The workflow uses short-lived OIDC authentication and publishes provenance from 
 
 See npm's [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/) for the one-time registry configuration.
 
+## Versioning and changelogs
+
+Published versions are managed with [Changesets](https://github.com/changesets/changesets):
+
+1. For a user-visible library change, run `npm run changeset` in the feature branch.
+2. Select `@open-trainer/ftms`, choose the semantic version impact, and write a short user-facing summary.
+3. Commit the generated `.changeset/*.md` file with the pull request.
+4. After changes land on `main`, the **Version packages** action creates or updates one version pull request containing the calculated package version, lockfile, and changelog changes.
+5. Merge that version pull request when ready, then use the manual npm release workflow above.
+
+Changesets combine multiple pending entries and apply the highest required bump. Documentation, tests, CI, and unpublished Trainer Lab changes do not need a changeset. The versioning bot never publishes to npm.
+
 ## First real-trainer session
 
 1. Update the trainer in the Wahoo app, then fully close Wahoo, Zwift, and other trainer applications.
