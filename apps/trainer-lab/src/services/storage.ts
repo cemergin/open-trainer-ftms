@@ -1,6 +1,7 @@
 import type { RideRecord, RideSample } from "../ride";
 import { WORKOUT_OPTIONS, type SpiceLevel, type Workout, type WorkoutStep } from "../workout";
 import { validWorkoutIntensity } from "../workout-intensity";
+import { WORKOUT_LIMITS } from "../workout-profile";
 
 const KEY = "open-trainer:rides:v2";
 export const BACKUP_BYTE_LIMIT = 20_000_000;
@@ -90,7 +91,7 @@ export function rideCsv(record: RideRecord): string {
         sample.grade !== undefined ||
         sample.resistance !== undefined,
     );
-  let sourceIndex = 0;
+  let sourceIndex = -1;
   return [
     "elapsed_seconds,power_watts,cadence_rpm,speed_kph,target_watts,data_source,ride_started_at" +
       (detailed
@@ -230,10 +231,15 @@ function decodeWorkout(value: unknown): Workout | null {
     !object(value) ||
     typeof value.name !== "string" ||
     !Array.isArray(value.steps) ||
-    !value.steps.length
+    !value.steps.length ||
+    value.steps.length > WORKOUT_LIMITS.steps
   )
     return null;
-  if (value.seconds !== null && (!nonnegative(value.seconds) || value.seconds === 0)) return null;
+  if (
+    value.seconds !== null &&
+    (!nonnegative(value.seconds) || value.seconds === 0 || value.seconds > WORKOUT_LIMITS.seconds)
+  )
+    return null;
   const steps: WorkoutStep[] = [];
   for (const step of value.steps) {
     if (
@@ -257,10 +263,12 @@ function decodeWorkout(value: unknown): Workout | null {
       ...(step.cadenceRpm !== undefined ? { cadenceRpm: step.cadenceRpm } : {}),
     });
   }
+  const expandedSeconds = steps.reduce((total, step) => total + step.seconds, 0);
   if (value.seconds === null) {
     if (steps.length !== 1 || steps[0]?.seconds !== Infinity) return null;
   } else if (
-    Math.abs(steps.reduce((total, step) => total + step.seconds, 0) - value.seconds) > 0.001
+    expandedSeconds > WORKOUT_LIMITS.seconds ||
+    Math.abs(expandedSeconds - value.seconds) > 0.001
   )
     return null;
   const spice = value.spice === undefined ? undefined : decodeSpice(value.spice);

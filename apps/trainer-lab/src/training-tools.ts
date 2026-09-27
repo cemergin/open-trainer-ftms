@@ -87,11 +87,14 @@ export function mountTrainingTools(callbacks: {
       "change",
       () =>
         void callbacks.run(async () => {
+          sound.disabled = speech.disabled = true;
           try {
             await coach.enable(sound.checked, speech.checked);
           } catch (error) {
-            sound.checked = false;
+            sound.checked = speech.checked = false;
             throw error;
+          } finally {
+            sound.disabled = speech.disabled = false;
           }
         }),
     );

@@ -2,38 +2,41 @@ import type { Ride } from "../ride";
 import { currentStep } from "../workout";
 export class RideCoach {
   #audio: AudioContext | undefined;
-  #enabled = false;
+  #sound = false;
   #speech = false;
   #last = "";
   #ride = "";
   #step = -1;
-  async enable(enabled: boolean, speech = false): Promise<void> {
-    this.#enabled = enabled;
-    this.#speech = speech;
-    if (!enabled) {
-      this.stop();
-      return;
-    }
-    if (typeof AudioContext === "undefined") {
-      this.#enabled = false;
-      throw new Error("Audio coaching is unavailable in this browser.");
-    }
+  async enable(sound: boolean, speech = false): Promise<void> {
+    const startSpeech = speech && !this.#speech;
+    this.#sound = this.#speech = false;
+    if (!speech) this.stop();
     try {
-      this.#audio ??= new AudioContext();
-      await this.#audio.resume();
+      if (
+        speech &&
+        (typeof speechSynthesis === "undefined" || typeof SpeechSynthesisUtterance === "undefined")
+      )
+        throw new Error("Spoken coaching is unavailable in this browser.");
+      if (sound) {
+        if (typeof AudioContext === "undefined")
+          throw new Error("Audio coaching is unavailable in this browser.");
+        this.#audio ??= new AudioContext();
+        await this.#audio.resume();
+        if (this.#audio.state !== "running")
+          throw new Error("Click Audio cues again to enable sound.");
+      }
+      this.#sound = sound;
+      this.#speech = speech;
+      if (startSpeech) this.#step = -1;
+      this.#tone(660);
     } catch (error) {
-      this.#enabled = false;
+      this.#sound = this.#speech = false;
       this.stop();
       throw error;
     }
-    if (this.#audio.state !== "running") {
-      this.#enabled = false;
-      throw new Error("Click Audio cues again to enable sound.");
-    }
-    this.#tone(660);
   }
   update(ride: Ride | undefined): void {
-    if (!this.#enabled || !ride?.workout || ride.status !== "riding") {
+    if ((!this.#sound && !this.#speech) || !ride?.workout || ride.status !== "riding") {
       this.stop();
       return;
     }
@@ -65,11 +68,12 @@ export class RideCoach {
   }
   stop(): void {
     const browser: Partial<Pick<Window, "speechSynthesis">> = globalThis;
-    if (browser.speechSynthesis?.speaking) browser.speechSynthesis.cancel();
+    if (browser.speechSynthesis?.speaking || browser.speechSynthesis?.pending)
+      browser.speechSynthesis.cancel();
   }
   #tone(frequency: number): void {
     const audio = this.#audio;
-    if (audio?.state !== "running") return;
+    if (!this.#sound || audio?.state !== "running") return;
     const oscillator = audio.createOscillator();
     const gain = audio.createGain();
     oscillator.frequency.value = frequency;

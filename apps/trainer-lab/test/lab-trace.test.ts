@@ -8,6 +8,7 @@ import {
 const trace = (events: object[]): string =>
   JSON.stringify({ version: 1, truncated: false, events });
 const connect = { kind: "connect", atMs: 0, session: 1 };
+const disconnect = { kind: "disconnect", atMs: 2, session: 1 };
 const write = (bytes: number[], characteristic = 0x2ad9): object => ({
   kind: "write",
   atMs: 1,
@@ -80,13 +81,15 @@ describe("Lab offline session tools", () => {
     expect(() => parseLabTrace(" ".repeat(4_000_001))).toThrow("4 MB");
     await expect(readLabTraceFile({ size: 4_000_001 } as File)).rejects.toThrow("4 MB");
     await expect(
-      readLabTraceFile({ size: 1, text: async () => trace([connect]) } as File),
+      readLabTraceFile({ size: 1, text: async () => trace([connect, disconnect]) } as File),
     ).resolves.toMatchObject({ version: 1 });
   });
   it("validates commands before replay", () => {
     for (const bytes of [[0, 1], [4], [8, 3], [0x13, 3], [0x40]])
-      expect(() => parseLabTrace(trace([connect, write(bytes)]))).toThrow();
-    expect(() => parseLabTrace(trace([connect, write([0], 1)]))).toThrow("control-point");
+      expect(() => parseLabTrace(trace([connect, write(bytes), disconnect]))).toThrow();
+    expect(() => parseLabTrace(trace([connect, write([0], 1), disconnect]))).toThrow(
+      "control-point",
+    );
     expect(() => parseLabTrace(trace([]))).toThrow("no connection");
     expect(() =>
       parseLabTrace(JSON.stringify({ version: 1, truncated: true, events: [] })),
@@ -105,7 +108,26 @@ describe("Lab offline session tools", () => {
       [0x13, 2],
       [0x14, 170, 0],
     ])
-      expect(parseLabTrace(trace([connect, write(bytes)])).events).toHaveLength(2);
+      expect(parseLabTrace(trace([connect, write(bytes), disconnect])).events).toHaveLength(3);
+  });
+  it("rejects an active recording until the connection has actually disconnected", async () => {
+    vi.useFakeTimers();
+    const session = createLabConnection(true, "sint16", "none");
+    await session.trainer.connect();
+    await session.trainer.acquireControl();
+    const activeTrace = session.recording.trace;
+    expect(activeTrace.truncated).toBe(false);
+    expect(() => parseLabTrace(JSON.stringify(activeTrace))).toThrow("incomplete");
+    expect(() => new LabReplay(activeTrace)).toThrow("incomplete");
+    await session.trainer.disconnect();
+    expect(parseLabTrace(JSON.stringify(session.recording.trace)).events.at(-1)?.kind).toBe(
+      "disconnect",
+    );
+  });
+  it("does not mistake a disconnect request for a completed recording", () => {
+    expect(() =>
+      parseLabTrace(trace([connect, { kind: "disconnect-request", atMs: 1, session: 1 }])),
+    ).toThrow("incomplete");
   });
   it("stops playback and releases pending commands", async () => {
     vi.useFakeTimers();

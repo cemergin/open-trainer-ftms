@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { workoutTarget } from "../src/workout-intensity";
+import { validWorkoutIntensity, workoutTarget } from "../src/workout-intensity";
+
+describe("recovered workout intensity", () => {
+  it("accepts the complete five-point grid and legacy defaults", () => {
+    for (let intensity = 50; intensity <= 150; intensity += 5)
+      expect(validWorkoutIntensity(intensity, "erg")).toBe(true);
+    expect(validWorkoutIntensity(undefined)).toBe(true);
+    expect(validWorkoutIntensity(100, "terrain")).toBe(true);
+    expect(validWorkoutIntensity(100, "resistance")).toBe(true);
+  });
+
+  it("rejects off-grid, out-of-range, and nonnumeric values", () => {
+    for (const intensity of [49, 51, 56, 99.5, 101, 149, 151, NaN, Infinity, "100", null])
+      expect(validWorkoutIntensity(intensity)).toBe(false);
+    expect(validWorkoutIntensity(105, "terrain")).toBe(false);
+    expect(validWorkoutIntensity(95, "resistance")).toBe(false);
+  });
+});
 
 describe("workout intensity targets", () => {
   it("defaults to the original target and scales the legacy watt adjustment", () => {

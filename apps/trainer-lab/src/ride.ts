@@ -9,11 +9,13 @@ import {
 import { findRoute } from "./routes";
 import { currentStep, trainerWatts, type Workout } from "./workout";
 import {
+  INTENSITY_STEP,
   MAX_INTENSITY,
   MIN_INTENSITY,
   validWorkoutIntensity,
   workoutTarget,
 } from "./workout-intensity";
+import { WORKOUT_LIMITS } from "./workout-profile";
 
 const AUTO_PAUSE_DELAY_MS = 20_000;
 
@@ -278,7 +280,10 @@ export class Ride {
       return;
     const intensity = Math.max(
       MIN_INTENSITY,
-      Math.min(MAX_INTENSITY, this.intensity + Math.round(delta)),
+      Math.min(
+        MAX_INTENSITY,
+        Math.round((this.intensity + delta) / INTENSITY_STEP) * INTENSITY_STEP,
+      ),
     );
     if (intensity === this.intensity) return;
     this.intensity = intensity;
@@ -313,6 +318,14 @@ export class Ride {
       seconds > 600
     )
       return;
+    const expandedSeconds = this.workout.steps.reduce((total, step) => total + step.seconds, 0);
+    if (
+      this.workout.seconds + seconds > WORKOUT_LIMITS.seconds ||
+      expandedSeconds + seconds > WORKOUT_LIMITS.seconds
+    ) {
+      this.error = "A workout cannot exceed 24 hours.";
+      return;
+    }
     const index = currentStep(this.workout, this.workoutElapsed).index;
     this.workout = {
       ...this.workout,
@@ -519,6 +532,8 @@ function checkpointMeasuredSeconds(
     (record.averagePower !== null && !nonnegative(record.averagePower))
   )
     throw new Error("This ride checkpoint is invalid or belongs to a different ride.");
+  if (workout.steps.length === 0 || workout.steps.length > WORKOUT_LIMITS.steps)
+    throw new Error("This workout has an invalid number of intervals.");
   const validSteps = workout.steps.every(
     (step) =>
       nonnegative(step.watts) &&
@@ -526,15 +541,15 @@ function checkpointMeasuredSeconds(
       (Number.isFinite(step.seconds) ||
         (workout.seconds === null && workout.steps.length === 1 && step.seconds === Infinity)),
   );
+  const expandedSeconds = workout.steps.reduce((seconds, step) => seconds + step.seconds, 0);
   if (
-    workout.steps.length === 0 ||
     !validSteps ||
     (workout.seconds !== null &&
       (!nonnegative(workout.seconds) ||
+        workout.seconds > WORKOUT_LIMITS.seconds ||
+        expandedSeconds > WORKOUT_LIMITS.seconds ||
         (record.workoutElapsed ?? record.seconds) >= workout.seconds ||
-        Math.abs(
-          workout.steps.reduce((seconds, step) => seconds + step.seconds, 0) - workout.seconds,
-        ) > 0.001))
+        Math.abs(expandedSeconds - workout.seconds) > 0.001))
   ) {
     throw new Error("This workout is already complete or has an invalid duration.");
   }

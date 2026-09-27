@@ -223,6 +223,38 @@ describe("interval clocks and recovery", () => {
     expect(power).toHaveBeenLastCalledWith(160);
   });
 
+  it("keeps interval extensions within the recoverable 24-hour limit", async () => {
+    const { ride, recover } = await setup();
+    await ride.start({
+      name: "Long ride",
+      seconds: 86340,
+      steps: [{ name: "Steady", seconds: 86340, watts: 100, effort: "steady" }],
+    });
+    ride.extendInterval();
+    expect(ride.workout?.seconds).toBe(86400);
+    const extended = ride.workout;
+    ride.extendInterval();
+    expect(ride.workout).toBe(extended);
+    expect(ride.error).toContain("24 hours");
+    if (!extended) throw new Error("Workout is required.");
+    expect(recover(extended, ride.record()).status).toBe("paused");
+  });
+
+  it("does not extend tolerated duration rounding past the recovery limit", async () => {
+    const { ride, recover } = await setup();
+    const plan: Workout = {
+      name: "Rounded duration",
+      seconds: 86340,
+      steps: [{ name: "Steady", seconds: 86340.0005, watts: 100, effort: "steady" }],
+    };
+    await ride.start(plan);
+    const recovered = recover(plan, ride.record());
+    recovered.extendInterval();
+    expect(recovered.workout).toBe(plan);
+    expect(recovered.error).toContain("24 hours");
+    expect(recover(plan, recovered.record()).status).toBe("paused");
+  });
+
   it("changes a paused interval locally and sends the new target only on resume", async () => {
     const { ride, trainer, tick } = await setup();
     await ride.start(workout);

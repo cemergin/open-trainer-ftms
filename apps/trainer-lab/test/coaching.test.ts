@@ -75,6 +75,74 @@ describe("optional interval coaching", () => {
     expect(speak).toHaveBeenCalledOnce();
     expect(speak.mock.calls[0]?.[0].text).toBe("Warm up. 95 watts. Aim for 80 RPM.");
   });
+  it("speaks intervals without requiring audio support or playing beeps", async () => {
+    vi.stubGlobal("AudioContext", undefined);
+    const coach = new RideCoach();
+    await coach.enable(false, true);
+    coach.update(ride());
+    coach.update(ride({ workoutElapsed: 7 }));
+    coach.update(ride({ workoutElapsed: 10, target: 185 }));
+    expect(speak).toHaveBeenCalledTimes(2);
+    expect(speak.mock.calls[1]?.[0].text).toBe("Effort. 185 watts.");
+    expect(resume).not.toHaveBeenCalled();
+    expect(createOscillator).not.toHaveBeenCalled();
+  });
+  it("plays audio cues without requiring speech support", async () => {
+    vi.stubGlobal("speechSynthesis", undefined);
+    vi.stubGlobal("SpeechSynthesisUtterance", undefined);
+    const coach = new RideCoach();
+    await coach.enable(true);
+    coach.update(ride());
+    expect(createOscillator).toHaveBeenCalledTimes(2);
+    expect(speak).not.toHaveBeenCalled();
+  });
+  it("silences an existing audio context when only speech remains enabled", async () => {
+    const coach = new RideCoach();
+    await coach.enable(true, true);
+    coach.update(ride());
+    await coach.enable(false, true);
+    createOscillator.mockClear();
+    coach.update(ride({ workoutElapsed: 7 }));
+    coach.update(ride({ workoutElapsed: 10 }));
+    expect(speak).toHaveBeenCalledTimes(2);
+    expect(createOscillator).not.toHaveBeenCalled();
+  });
+  it("announces the current interval when speech is enabled after audio cues", async () => {
+    const coach = new RideCoach();
+    await coach.enable(true);
+    coach.update(ride());
+    await coach.enable(true, true);
+    coach.update(ride());
+    coach.update(ride());
+    expect(speak).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { speaking: true, pending: false },
+    { speaking: false, pending: true },
+  ])("cancels speech when disabled while preserving audio cues (%j)", async (speechState) => {
+    const coach = new RideCoach();
+    await coach.enable(true, true);
+    coach.update(ride());
+    vi.stubGlobal("speechSynthesis", { speak, cancel, ...speechState });
+    cancel.mockClear();
+    await coach.enable(true, false);
+    expect(cancel).toHaveBeenCalledOnce();
+    createOscillator.mockClear();
+    coach.update(ride({ workoutElapsed: 10 }));
+    expect(createOscillator).toHaveBeenCalledOnce();
+    expect(speak).toHaveBeenCalledOnce();
+  });
+  it("stops all cues when both settings are disabled", async () => {
+    const coach = new RideCoach();
+    await coach.enable(true, true);
+    coach.update(ride());
+    await coach.enable(false, false);
+    createOscillator.mockClear();
+    speak.mockClear();
+    coach.update(ride({ workoutElapsed: 10 }));
+    expect(createOscillator).not.toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
+  });
   it("waits for pending control acknowledgements before announcing the next interval", async () => {
     const coach = new RideCoach();
     await coach.enable(true, true);
@@ -106,5 +174,46 @@ describe("optional interval coaching", () => {
     await expect(coach.enable(true, true)).rejects.toThrow("denied");
     coach.update(ride());
     expect(speak).not.toHaveBeenCalled();
+  });
+  it.each(["speechSynthesis", "SpeechSynthesisUtterance"])(
+    "rejects spoken cues when %s is unavailable and leaves coaching disabled",
+    async (api) => {
+      const coach = new RideCoach();
+      await coach.enable(true);
+      vi.stubGlobal(api, undefined);
+      await expect(coach.enable(true, true)).rejects.toThrow("Spoken coaching is unavailable");
+      createOscillator.mockClear();
+      coach.update(ride());
+      expect(speak).not.toHaveBeenCalled();
+      expect(createOscillator).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["missing", "suspended"])(
+    "rejects unavailable audio and allows speech-only coaching afterward (%s)",
+    async (audioState) => {
+      if (audioState === "missing") vi.stubGlobal("AudioContext", undefined);
+      else state = audioState;
+      const coach = new RideCoach();
+      await expect(coach.enable(true, true)).rejects.toThrow();
+      coach.update(ride());
+      expect(speak).not.toHaveBeenCalled();
+      await coach.enable(false, true);
+      coach.update(ride());
+      expect(speak).toHaveBeenCalledOnce();
+      expect(createOscillator).not.toHaveBeenCalled();
+    },
+  );
+  it("waits for audio permission before enabling either requested cue", async () => {
+    let allowAudio: (() => void) | undefined;
+    resume.mockImplementationOnce(() => new Promise<void>((resolve) => (allowAudio = resolve)));
+    const coach = new RideCoach();
+    const enabling = coach.enable(true, true);
+    coach.update(ride());
+    expect(speak).not.toHaveBeenCalled();
+    expect(createOscillator).not.toHaveBeenCalled();
+    allowAudio?.();
+    await enabling;
+    coach.update(ride());
+    expect(speak).toHaveBeenCalledOnce();
   });
 });

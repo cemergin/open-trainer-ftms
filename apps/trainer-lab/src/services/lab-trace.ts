@@ -111,13 +111,19 @@ function commandFor(bytes: readonly number[]): (trainer: Trainer) => Promise<unk
   }
 }
 
+function requireCompleteTrace(trace: TransportTrace): void {
+  if (trace.truncated)
+    throw new Error("This recording is incomplete. Replay requires a complete trace.");
+  if (!trace.events.length) throw new Error("The trace contains no connection.");
+  if (trace.events.at(-1)?.kind !== "disconnect")
+    throw new Error("This recording is incomplete. Disconnect before exporting a replay trace.");
+}
+
 export function parseLabTrace(json: string): TransportTrace {
   if (new TextEncoder().encode(json).byteLength > LAB_TRACE_BYTE_LIMIT)
     throw new Error("Trace exceeds the 4 MB import limit.");
   const trace = parseTransportTrace(JSON.parse(json) as unknown);
-  if (trace.truncated)
-    throw new Error("This recording is incomplete. Replay requires a complete trace.");
-  if (!trace.events.length) throw new Error("The trace contains no connection.");
+  requireCompleteTrace(trace);
   for (const event of trace.events) {
     if (event.kind !== "write") continue;
     if (event.characteristic !== 0x2ad9)
@@ -133,6 +139,7 @@ export class LabReplay {
   #stopped = false;
 
   constructor(trace: TransportTrace) {
+    requireCompleteTrace(trace);
     this.#transport = new ReplayFtmsTransport(trace);
     const legacy = trace.events.some(
       (event) => event.kind === "write" && event.bytes[0] === 4 && event.bytes.length === 2,

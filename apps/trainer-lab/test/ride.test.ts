@@ -232,6 +232,9 @@ describe("ride recovery", () => {
       { intensity: Infinity },
       { intensity: 110.5 },
       { intensity: 49 },
+      { intensity: 51 },
+      { intensity: 56 },
+      { intensity: 149 },
       { intensity: 151 },
       { intensity: 110, controlMode: "resistance" },
       { intensity: 90, controlMode: "terrain" },
@@ -259,6 +262,38 @@ describe("ride recovery", () => {
     expect(ride.status).toBe("finished");
     expect(transport.commandHistory).toEqual([0x00, 0x08]);
     expect(ride.elapsed).toBe(2);
+  });
+  it("rejects oversized recovery workouts before changing ride state", async () => {
+    const { ride, transport } = await setup();
+    const step = { name: "Steady", seconds: 10, watts: 100, effort: "steady" as const };
+    for (const workout of [
+      { ...shortWorkout, seconds: 5010, steps: Array.from({ length: 501 }, () => step) },
+      { ...shortWorkout, seconds: 86401, steps: [{ ...step, seconds: 86401 }] },
+      { ...shortWorkout, seconds: 86400, steps: [{ ...step, seconds: 86400.0005 }] },
+    ]) {
+      expect(() => ride.restore(workout, checkpoint())).toThrow();
+    }
+    expect(ride.status).toBe("ready");
+    expect(ride.workout).toBeUndefined();
+    expect(transport.commandHistory).toEqual([]);
+  });
+
+  it("recovers a workout at both the 500-interval and 24-hour limits", async () => {
+    const { ride, transport } = await setup();
+    const workout = {
+      ...shortWorkout,
+      seconds: 86400,
+      steps: Array.from({ length: 500 }, (_, index) => ({
+        name: "Steady",
+        seconds: index === 499 ? 572 : 172,
+        watts: 100,
+        effort: "steady" as const,
+      })),
+    };
+    ride.restore(workout, checkpoint());
+    expect(ride.status).toBe("paused");
+    expect(ride.workout?.steps).toHaveLength(500);
+    expect(transport.commandHistory).toEqual([]);
   });
   it("can explicitly end a recovered paused ride without starting the trainer", async () => {
     const { ride, transport } = await setup();
@@ -314,7 +349,7 @@ describe("workout-wide ride intensity", () => {
     expect(ride.target).toBe(64);
   });
 
-  it("clamps and rounds intensity independently of the trainer power grid", async () => {
+  it("clamps intensity to a five-point grid independently of the trainer power grid", async () => {
     const { ride, trainer } = await setup();
     const capabilities = trainer.capabilities.current;
     if (!capabilities) throw new Error("Missing trainer capabilities.");
@@ -333,8 +368,11 @@ describe("workout-wide ride intensity", () => {
     expect(ride.intensity).toBe(50);
     expect(ride.target).toBe(105);
     await ride.adjustIntensity(5.6);
-    expect(ride.intensity).toBe(56);
+    expect(ride.intensity).toBe(55);
     expect(ride.target).toBe(115);
+    await ride.adjustIntensity(-5.6);
+    expect(ride.intensity).toBe(50);
+    expect(ride.record().intensity).toBe(50);
   });
 
   it("updates a paused target without hardware commands and applies it on resume", async () => {

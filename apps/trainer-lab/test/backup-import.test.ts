@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RideRecord } from "../src/ride";
 import type { SensorSourceSnapshot } from "../src/services/sensors";
+import { WORKOUT_LIMITS } from "../src/workout-profile";
 import {
   BACKUP_BYTE_LIMIT,
   deleteRide,
@@ -195,6 +196,39 @@ describe("transactional ride backup imports", () => {
     });
     expect(csv.split("\n")[0]).toContain("resistance_level");
   });
+
+  it("only attributes imported samples to source changes already in effect", () => {
+    const imported = {
+      ...record,
+      seconds: 5,
+      sourceChanges: [
+        { seconds: 2, sources: trainerSources },
+        { seconds: 4, sources: externalSources },
+      ],
+      samples: Array.from({ length: 5 }, (_, index) => ({
+        seconds: index + 1,
+        watts: 100,
+        cadence: 80,
+        speed: 36,
+        target: 100,
+      })),
+    };
+    expect(importRideBackup(backup([imported])).imported).toBe(1);
+    const saved = listRides()[0];
+    if (!saved) throw new Error("Imported ride is required.");
+    const sources = rideCsv(saved)
+      .split("\n")
+      .slice(1)
+      .map((line) => line.split(",").slice(11, 14));
+    expect(sources).toEqual([
+      ["", "", ""],
+      ["trainer", "trainer", "none"],
+      ["trainer", "trainer", "none"],
+      ["external", "external", "external"],
+      ["external", "external", "external"],
+    ]);
+  });
+
   it("merges new rides while preserving a longer local recording of the same activity", () => {
     expect(saveRide({ ...record, seconds: 20 })).toBe(true);
     const other = { ...record, startedAt: "2026-09-28T12:00:00.000Z" };
@@ -247,6 +281,75 @@ describe("transactional ride backup imports", () => {
     expect(loadCheckpoint()).toEqual(checkpoint);
     expect(listRides()[0]).toEqual(checkpoint.record);
   });
+
+  it.each([
+    { count: WORKOUT_LIMITS.steps, seconds: WORKOUT_LIMITS.steps },
+    { count: 1, seconds: WORKOUT_LIMITS.seconds },
+    { count: WORKOUT_LIMITS.steps, seconds: WORKOUT_LIMITS.seconds },
+  ])("accepts recovery at the expanded workout limits: %j", ({ count, seconds }) => {
+    const recovery = {
+      ...checkpoint,
+      workout: {
+        name: record.name,
+        seconds,
+        steps: Array.from({ length: count }, (_, index) => ({
+          name: "Steady",
+          seconds: index === 0 ? seconds - count + 1 : 1,
+          watts: 100,
+          effort: "steady" as const,
+        })),
+      },
+    };
+    expect(importRideBackup(backup([], recovery)).recovered).toBe(true);
+    expect(loadCheckpoint()).toEqual(recovery);
+  });
+
+  it("imports open-ended free rides without imposing the timed workout limit", () => {
+    const recovery = {
+      ...checkpoint,
+      workout: {
+        name: record.name,
+        seconds: null,
+        steps: [{ name: "Free ride", seconds: null, watts: 100, effort: "steady" }],
+      },
+    };
+    expect(importRideBackup(backup([], recovery)).recovered).toBe(true);
+    expect(loadCheckpoint()?.workout.seconds).toBeNull();
+    expect(loadCheckpoint()?.workout.steps[0]?.seconds).toBe(Infinity);
+  });
+
+  it.each([
+    { count: WORKOUT_LIMITS.steps + 1, seconds: WORKOUT_LIMITS.steps + 1, extraSeconds: 0 },
+    { count: 1, seconds: WORKOUT_LIMITS.seconds + 1, extraSeconds: 0 },
+    { count: 1, seconds: WORKOUT_LIMITS.seconds, extraSeconds: 0.0005 },
+  ])(
+    "rejects oversized recovery without changing local data: %j",
+    ({ count, seconds, extraSeconds }) => {
+      expect(saveCheckpoint(checkpoint)).toBe(true);
+      const before = stored.get(KEY);
+      const recovery = {
+        ...checkpoint,
+        workout: {
+          name: record.name,
+          seconds,
+          steps: Array.from({ length: count }, (_, index) => ({
+            name: "Steady",
+            seconds: index === 0 ? seconds - count + 1 + extraSeconds : 1,
+            watts: 100,
+            effort: "steady" as const,
+          })),
+        },
+      };
+      setItem.mockClear();
+      expect(() =>
+        importRideBackup(backup([{ ...record, startedAt: "2026-09-28T12:00:00.000Z" }], recovery)),
+      ).toThrow(/invalid recovery checkpoint/);
+      expect(saveCheckpoint(recovery)).toBe(false);
+      expect(setItem).not.toHaveBeenCalled();
+      expect(stored.get(KEY)).toBe(before);
+      expect(loadCheckpoint()).toEqual(checkpoint);
+    },
+  );
 
   it("does not revive a recovery older than a completed or longer local activity", () => {
     saveRide({ ...record, completed: true });
