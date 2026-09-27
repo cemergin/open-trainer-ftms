@@ -35,15 +35,14 @@ jobs:
 
       - name: Create or update version pull request
         id: changesets
-        uses: changesets/action@v1.9.0
+        uses: changesets/action@v2.1.2
         with:
-          version: npm run version-packages
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
-          commitMode: github-api
+          version-script: npm run version-packages
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
 
       - name: Run CI for version pull request
-        if: steps.changesets.outputs.pullRequestNumber != ''
+        if: steps.changesets.outputs.pr-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run ci.yml --ref changeset-release/main

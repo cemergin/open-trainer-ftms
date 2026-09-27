@@ -6,9 +6,13 @@ Thank you for helping make open indoor training software safer and more useful.
 
 Requirements:
 
-- Node.js 20.19 or newer
-- npm with lockfile v3 support
+- Node.js 22.12+ (22.x), 24.x, or 26+ for workspace development
+- npm 10.9 or newer
 - Chrome or Edge only when testing physical Web Bluetooth hardware
+
+Use `nvm use` for the recommended Node.js 24 toolchain. The published FTMS library
+still supports Node.js 20.19+; CI checks its installed runtime separately from the
+development tools.
 
 ```sh
 npm ci

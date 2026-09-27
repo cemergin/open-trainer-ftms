@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - codex/dependency-updates
 
 permissions:
   contents: read
