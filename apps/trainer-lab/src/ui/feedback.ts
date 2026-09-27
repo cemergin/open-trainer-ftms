@@ -12,7 +12,7 @@ export function powerFeedback(power: number | undefined, target: number, riding:
   }
   const delta = power - target;
   const tolerance = Math.max(5, target * 0.05);
-  const position = Math.max(0, Math.min(100, 50 + delta / target * 100));
+  const position = Math.max(0, Math.min(100, 50 + delta / tolerance * 5));
   if (Math.abs(delta) <= tolerance) return { band: "pocket", label: "In the pocket", guidance: "Right on target. Keep that smooth rhythm.", position };
   if (delta < 0) return { band: "below", label: "Build a little", guidance: `${Math.round(-delta)} W below target · keep pedaling smoothly.`, position };
   return { band: "above", label: "Ease a little", guidance: `${Math.round(delta)} W above target · let the trainer settle.`, position };

@@ -19,4 +19,11 @@ describe("power guidance", () => {
     expect(powerFeedback(500, 100, true)).toMatchObject({ band: "above", position: 100 });
     expect(powerFeedback(80, 100, true).guidance).toContain("20 W below");
   });
+  it("keeps the pointer inside the green pocket at both tolerance boundaries", () => {
+    for (const target of [25, 60, 100, 300]) {
+      const tolerance = Math.max(5, target * 0.05);
+      expect(powerFeedback(target - tolerance, target, true)).toMatchObject({ band: "pocket", position: 45 });
+      expect(powerFeedback(target + tolerance, target, true)).toMatchObject({ band: "pocket", position: 55 });
+    }
+  });
 });

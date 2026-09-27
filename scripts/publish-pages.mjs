@@ -108,8 +108,9 @@ function publish(repository, commit, settings) {
         "-f", "build_type=legacy", "-f", "source[branch]=gh-pages", "-f", "source[path]=/",
       ], { capture: true });
     }
-    const pages = pagesSettings(repository);
-    console.log(`Published the build to gh-pages. Site: ${pages.html_url}`);
+    const [owner, name] = repository.split("/");
+    const siteUrl = settings?.html_url ?? `https://${owner}.github.io/${name.toLowerCase() === `${owner.toLowerCase()}.github.io` ? "" : `${name}/`}`;
+    console.log(`Published the build to gh-pages. Site: ${siteUrl}`);
     console.log(`GitHub may take a few minutes to finish deployment. Status: gh api repos/${repository}/pages`);
   } finally {
     rmSync(directory, { recursive: true, force: true });
