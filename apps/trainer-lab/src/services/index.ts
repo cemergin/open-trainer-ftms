@@ -1,4 +1,63 @@
-/** Browser capabilities and persistence enter the qualification UI through this module. */
+/** Application boundary for trainer adapters, local persistence, and browser capabilities. */
+import { createMockTrainer } from "@open-trainer/ftms/testing";
+import { createWebBluetoothTrainer } from "@open-trainer/ftms/web-bluetooth";
+import type { Trainer } from "@open-trainer/ftms";
+
+export type { Trainer, TrainerCapabilities, TrainerTelemetry, Unsubscribe, ValueRange } from "@open-trainer/ftms";
+export { loadRide, saveRide, rideCsv, listRides, loadCheckpoint, saveCheckpoint, clearCheckpoint, exportAllData, RIDE_HISTORY_LIMIT, type RideCheckpoint } from "../storage";
+
+export function createTrainerConnection(simulator: boolean): Trainer {
+  return simulator ? createMockTrainer() : createWebBluetoothTrainer();
+}
+
+export function bluetoothSupported(): boolean {
+  return Boolean(navigator.bluetooth) && window.isSecureContext;
+}
+
+let wakeLock: WakeLockSentinel | undefined;
+let wakeRequested = false;
+let shouldStayAwake = false;
+
+export function resetWakeLockRequest(): void { wakeRequested = false; }
+
+export async function keepScreenAwake(active: boolean): Promise<void> {
+  shouldStayAwake = active;
+  if (!active) {
+    if (wakeLock) {
+      const lock = wakeLock;
+      wakeLock = undefined;
+      await lock.release().catch(() => undefined);
+    }
+    wakeRequested = false;
+    return;
+  }
+  if (!navigator.wakeLock || wakeLock || wakeRequested || document.visibilityState !== "visible") return;
+  wakeRequested = true;
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    if (!shouldStayAwake) { await lock.release(); return; }
+    wakeLock = lock;
+    lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = undefined; });
+  } catch { /* Wake lock is optional; local riding and controls remain available. */ }
+}
+
+/** Download stays at the browser-service boundary so views do not manage object URLs. */
+export function downloadText(content: string, filename: string, mime: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function copyText(content: string): Promise<void> {
+  if (!navigator.clipboard) throw new Error("Clipboard is unavailable. Use Download instead.");
+  await navigator.clipboard.writeText(content);
+}
+
 export { loadQualificationDraft, saveQualificationDraft } from "./qualification-storage.js";
 
 export function qualificationClient(): {
@@ -39,13 +98,3 @@ export function qualificationClient(): {
   };
 }
 
-export function downloadText(content: string, filename: string, mime: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: mime }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}

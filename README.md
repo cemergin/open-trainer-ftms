@@ -1,38 +1,57 @@
-# Open Trainer — phase 1
+# Open Trainer — just ride
 
 [![CI](https://github.com/cemergin/open-trainer-ftms/actions/workflows/ci.yml/badge.svg)](https://github.com/cemergin/open-trainer-ftms/actions/workflows/ci.yml)
 
-This repository contains the first, deliberately narrow slice of the project:
+A free desktop cycling companion for Bluetooth FTMS smart trainers. Choose from seven workouts, let the app suggest a starting power or choose your own, and ride with live power guidance, speed, cadence, and interval progress. The app keeps the last 30 rides and an unfinished-ride checkpoint in this browser.
 
-1. `@open-trainer/ftms`, a browser-oriented FTMS smart-trainer library.
-2. Trainer Lab, a minimal interface for inspecting telemetry and testing safe control commands.
-
-There is no account system, cloud service, multiplayer code, workout marketplace, or game framework in this phase.
+The workspace contains the independent `@open-trainer/ftms` library and a TypeScript/Vite riding app. The rebuilt Trainer Lab at `/lab.html` provides detailed telemetry, capability inspection, individual controls, and downloadable diagnostics. Desktop is the current priority; mobile-specific polish and phone trainer testing are deferred.
 
 ## Requirements
 
-- Node.js 22.13+ (22.x), 24.x, or 26+ for workspace development
+- Node.js 22.12+ (22.x), 24.x, or 26+ for workspace development
 - npm 10.9 or newer
 - Chrome or Edge for a real trainer
 - A secure context: HTTPS in production or `localhost` during development
-- KICKR CORE firmware 1.1.1 or newer for standard Bluetooth FTMS
+- An ERG-capable trainer advertising standard Bluetooth FTMS; the rider's trainer is a Wahoo KICKR CORE
 
-## Run the lab
+## Ride locally
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:4173`. Choose **Use simulator** to exercise the entire public API without hardware.
+Open `http://127.0.0.1:4173` in Chrome or Edge on this computer. Choose **Try a demo** to test a simulated ride without hardware, or **Connect trainer** to pair your bike trainer. Bluetooth pairing needs a browser button click; the app does not connect or apply resistance automatically.
+
+Choose **Steady ride**, **Five efforts**, **Recovery spin**, **Tempo cruise**, **Rolling hills**, **Mountain climb**, or **Free ride**. Hills and mountain are ERG power profiles, not simulated routes or slope control. Leave **Steady target** empty for Auto, or enter a comfortable watt target. Auto uses a conservative preset and may lower it using a previous completed physical ride's average power; it does not measure or estimate FTP.
+
+The presets use general warm-up, main-effort, and cool-down patterns rather than personalized training prescriptions.
+
+Start pedaling and press **Start ride**. With no ride history, the default is a 30-minute steady ride with a 60 W warm-up, 100 W middle, and 50 W cool-down. You can adjust power during the ride. Targets follow the trainer's supported range and increment, with an app ceiling of 600 W.
+
+- **Pause ride / Resume ride** excludes breaks from workout time.
+- **End ride**, or Escape, sends Stop and saves the partial ride. Timed workouts stop automatically at the finish.
+- The power gauge combines color and text for below target, **In the pocket**, and above target. Trainer speed and subtle movement provide live feedback; missing or stale data never counts as on target. Reduced-motion preferences disable animation.
+- The app pauses on stale telemetry, detected browser suspension, or sustained near-zero cadence when cadence is reported. It cannot command a disconnected trainer or guarantee physical resistance release without an acknowledged Stop.
+- Keep this tab open and the computer awake. Screen wake lock is requested when supported. Checkpoints save every five seconds of recorded riding and on lifecycle/page-exit events. After returning, reconnect through the recovery card, then explicitly choose **Resume ride**. Recovery restores the recorded time, workout, adjustment, samples, and measurements in a paused state; time away is excluded.
+- **Past rides** keeps the last 30 rides. Each ride can be downloaded as CSV, and **Export all data** creates a JSON backup including the recovery checkpoint. CSV contains per-second samples; it is not a FIT/TCX file or a Strava upload. Distance is estimated from trainer speed; work is mechanical kJ, not dietary calories. Simulator data is labeled separately.
+
+Persistence runs through the app's storage service using browser local storage. No account, cloud upload, cookies, or subscription is required. Records belong to this browser and site address, so localhost and a hosted site have separate histories. Browser data can be cleared; export a backup to keep it. Physical KICKR CORE pairing and resistance response still require a real session.
+
+The static app supports free GitHub Pages hosting over HTTPS. See [GITHUB_PAGES.md](./GITHUB_PAGES.md) for deployment and verification; local use does not require publication.
 
 ## Verify the workspace
 
 ```sh
-npm run verify
+npm test
+npm run typecheck
+npm run build
+npm run verify:package
 ```
 
-This is the exact software gate used for releases: format, type-aware lint, coverage thresholds, strict type checking, builds, package metadata/type checks, clean tarball installation, and runtime smoke tests. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for every enforced gate.
+The latest local validation passed 106 tests (85 app and 21 library), type checking, production build, and package verification.
+
+The library follows a test-first workflow. Its suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries. App tests cover workout profiles, recovery and command races, power feedback, history/checkpoint validation, and diagnostic controls.
 
 ## Manual npm release
 
@@ -42,12 +61,10 @@ For a real release:
 
 1. Merge the Changesets-generated version pull request described below. npm versions cannot be overwritten.
 2. In the npm package settings, configure a GitHub Actions trusted publisher for user `cemergin`, repository `open-trainer-ftms`, workflow file `publish.yml`, environment `npm`, and allow the `npm publish` action.
-3. Restrict the repository's `npm` environment to protected branches and require a maintainer approval.
+3. Optionally protect the repository's `npm` environment with required reviewers.
 4. Open **Actions → Publish npm package → Run workflow**, select `publish`, choose the `next` or `latest` tag, and enter `publish @open-trainer/ftms` exactly.
 
-The `latest` channel is additionally blocked until committed physical-trainer evidence passes [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). Contributors qualify devices with the repeatable [physical trainer integration guide](./DEVICE_INTEGRATION_GUIDE.md). The `next` channel is explicitly for prerelease evaluation.
-
-The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. It deliberately has no long-lived npm token fallback: trusted publishing must be configured before the first automated release.
+The workflow uses short-lived OIDC authentication and publishes provenance from a GitHub-hosted runner. If an initial token-authenticated publish is required before npm will let you configure the trusted publisher, add a narrowly scoped automation token as the `NPM_TOKEN` secret on the `npm` environment, publish once, then remove the secret after trusted publishing is configured.
 
 See npm's [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/) for the one-time registry configuration.
 
@@ -65,27 +82,23 @@ Changesets combine multiple pending entries and apply the highest required bump.
 
 ## First real-trainer session
 
-Trainer Lab now contains the complete 12-step device qualification workflow and exports the release-gate report. Read [DEVICE_INTEGRATION_GUIDE.md](./DEVICE_INTEGRATION_GUIDE.md) before the first physical command.
+1. Check the KICKR CORE firmware in Wahoo's app, then fully close Wahoo, Zwift, and other trainer applications.
+2. Put the bike on the trainer, plug in the trainer, and open `http://127.0.0.1:4173` in Chrome or Edge.
+3. Choose **Connect trainer**, allow Bluetooth access, and select the FTMS trainer.
+4. Choose a workout and leave the target on Auto or select a comfortable low target. Start pedaling, then choose **Start ride**.
+5. Confirm that power/cadence appear and that **Pause ride** and **End ride** work with your hardware.
+6. Use [Trainer Lab](http://127.0.0.1:4173/lab.html) for device capabilities, ranges, detailed telemetry, a recent power/cadence chart, control responses, machine-status packets, and downloadable snapshots/session logs. Its 80 W demo sequence is simulator-only. End the ride before opening the lab.
 
-1. Update the trainer in the Wahoo app, then fully close Wahoo, Zwift, and other trainer applications.
-2. Put the bike on the trainer and plug the trainer into power.
-3. Open Trainer Lab in Chrome or Edge and choose **Connect trainer**.
-4. Confirm that power and cadence appear before taking control.
-5. Choose **Take control**.
-6. Set a low target such as 80 W, then choose **Start**.
-7. Confirm that **Stop resistance** returns the trainer to a safe state.
-8. Download the session log if anything behaves unexpectedly.
-
-Do not perform the first control test on an unoccupied bike. ERG mode can increase resistance sharply when cadence falls.
+If a trainer is missing from the chooser, check firmware, Bluetooth permissions, and other apps holding a connection. The riding screen requires ERG power control; the diagnostic lab exposes other supported control modes.
 
 ## Package architecture
 
 The trainer core depends on the small `FtmsTransport` port. The included adapters are:
 
 - `WebBluetoothFtmsTransport` for physical BLE hardware.
-- `MockFtmsTransport` for the lab, unit tests, and the future single-player game.
+- `MockFtmsTransport` for the riding app, lab, and unit tests.
 
-The future game should consume only the package's public telemetry and control API. It should not parse Bluetooth packets or access GATT characteristics directly.
+The riding app and any future game consume the package's public telemetry and control API. They do not parse Bluetooth packets or access GATT characteristics directly.
 
 ```ts
 import type { Trainer } from "@open-trainer/ftms";
@@ -95,8 +108,6 @@ import { createMockTrainer } from "@open-trainer/ftms/testing";
 
 Reactive data flows out through read-only state and streams. Async commands flow in through serialized queues. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the boundaries, TDD strategy, and remaining hardware-validation plan.
 
-FTMS 1.0 and 1.0.1 differ in target-resistance encoding. Modern `sint16` is the default; legacy `uint8` must be selected explicitly with `resistanceControlFormat`. Do not guess from a model name—record the firmware and confirmed format in the hardware compatibility report.
-
 ## Next phase
 
-After hardware validation, the next contained milestone is a local-first single-player workout engine and one playable arena. The trainer library remains independent and publishable.
+Validate the ride lifecycle on the KICKR CORE and follow [GITHUB_PAGES.md](./GITHUB_PAGES.md) to publish the static app. The trainer library remains independent and publishable. See [PLAN.md](./PLAN.md) for implementation and review status.

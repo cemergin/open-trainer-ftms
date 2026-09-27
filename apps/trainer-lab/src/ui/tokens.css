@@ -1,0 +1,93 @@
+/* Semantic tokens shared by native UI components and page layouts. */
+:root {
+  color-scheme: dark;
+  --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: #111414;
+  --color-surface: #1a201e;
+  --color-surface-inset: #181d1b;
+  --color-surface-raised: #242c26;
+  --color-surface-hover: #283126;
+  --color-text: #f0f2ec;
+  --color-text-secondary: #c1cea8;
+  --color-text-muted: #929d9a;
+  --color-text-on-accent: #172018;
+  --color-border: #303735;
+  --color-border-strong: #475141;
+  --color-border-selected: #8d9c62;
+  --color-accent: #d3f477;
+  --color-accent-subtle: #d3f47709;
+  --color-accent-halo: #d3f47710;
+  --color-status-idle: #727d76;
+  --color-status-halo: #ffffff06;
+  --color-warning: #f7b880;
+  --color-warning-text: #f1cd9f;
+  --color-warning-surface: #30281e;
+  --color-warning-border: #695137;
+  --color-danger-text: #ffd3bd;
+  --color-danger-surface: #32231f;
+  --color-danger-border: #765046;
+  --color-danger-action: #422d26;
+  --color-success-surface: #20291e;
+  --color-success-border: #72845b;
+  --color-ride-glow: #29322290;
+  --color-profile-steady: #819f543d;
+  --color-profile-steady-border: #a1c96a55;
+  --color-profile-easy: #79957440;
+  --color-profile-easy-border: #8aa57b50;
+  --color-profile-hard: #ba936050;
+  --color-profile-hard-border: #edb27670;
+  --color-profile-current: #bce77d85;
+  --color-profile-marker: #e1ebd6;
+  --color-shimmer: #f0f2ec18;
+
+  --text-tiny: 8px;
+  --text-micro: 9px;
+  --text-label: 10px;
+  --text-caption: 11px;
+  --text-small: 12px;
+  --text-body: 14px;
+  --text-brand: 18px;
+  --text-heading: 26px;
+  --text-metric: 28px;
+  --text-power: 104px;
+  --text-target: 62px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --radius-small: 4px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --radius-pill: 999px;
+  --control-height: 44px;
+  --focus-width: 2px;
+  --focus-offset: 4px;
+  --opacity-disabled: 0.36;
+  --opacity-completed: 0.4;
+
+  --motion-fast: 140ms;
+  --motion-standard: 220ms;
+  --motion-live: 3s;
+  --motion-interval: 5s;
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+:root {
+  --color-power-below: #81b9dc;
+  --color-power-pocket: #d3f477;
+  --color-power-above: #f7b880;
+  --color-guidance-background: #101713;
+}

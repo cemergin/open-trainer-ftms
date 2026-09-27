@@ -1,438 +1,353 @@
-import type {
-  Trainer,
-  TrainerCapabilities,
-  TrainerTelemetry,
-  Unsubscribe,
-} from "@open-trainer/ftms";
-import { createMockTrainer } from "@open-trainer/ftms/testing";
-import { createWebBluetoothTrainer } from "@open-trainer/ftms/web-bluetooth";
-import { createQualificationPanel } from "./qualification-panel.js";
+import { Ride, type RideStatus, type RideRecord } from "./ride";
+import { createWorkout, currentStep, formatTime, trainerWatts, suggestedTarget, WORKOUT_OPTIONS, type WorkoutMode } from "./workout";
+import { createTrainerConnection, bluetoothSupported, keepScreenAwake, resetWakeLockRequest, loadRide, saveRide, rideCsv, listRides, loadCheckpoint, saveCheckpoint, clearCheckpoint, exportAllData, downloadText, type Trainer } from "./services";
+import { renderFeedback } from "./ui/feedback";
+import { mountWorkoutPicker } from "./ui/workout-picker";
+import { renderRideHistory } from "./ui/history";
 import "./style.css";
 
-type LogKind = "info" | "error";
-interface LogEntry {
-  at: string;
-  kind: LogKind;
-  message: string;
-}
-
-interface ElementConstructor<T extends HTMLElement> {
-  new (): T;
-  readonly name: string;
-}
-
-const byId = <T extends HTMLElement>(id: string, constructor: ElementConstructor<T>): T => {
+const byId = <T extends HTMLElement>(id: string): T => {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
-  if (!(element instanceof constructor)) {
-    throw new Error(`#${id} is not a ${constructor.name}.`);
-  }
-  return element;
+  return element as T;
 };
-
 const ui = {
-  status: byId("status", HTMLElement),
-  statusDot: byId("status-dot", HTMLElement),
-  deviceName: byId("device-name", HTMLElement),
-  connectReal: byId("connect-real", HTMLButtonElement),
-  connectSimulator: byId("connect-simulator", HTMLButtonElement),
-  disconnect: byId("disconnect", HTMLButtonElement),
-  resistanceFormat: byId("resistance-format", HTMLSelectElement),
-  requestControl: byId("request-control", HTMLButtonElement),
-  start: byId("start", HTMLButtonElement),
-  pause: byId("pause", HTMLButtonElement),
-  reset: byId("reset", HTMLButtonElement),
-  stop: byId("stop", HTMLButtonElement),
-  powerForm: byId("power-form", HTMLFormElement),
-  powerInput: byId("target-power", HTMLInputElement),
-  resistanceForm: byId("resistance-form", HTMLFormElement),
-  resistanceInput: byId("resistance", HTMLInputElement),
-  gradeForm: byId("grade-form", HTMLFormElement),
-  gradeInput: byId("grade", HTMLInputElement),
-  power: byId("power", HTMLElement),
-  cadence: byId("cadence", HTMLElement),
-  speed: byId("speed", HTMLElement),
-  distance: byId("distance", HTMLElement),
-  capabilities: byId("capabilities", HTMLElement),
-  connectionState: byId("connection-state", HTMLElement),
-  controlState: byId("control-state", HTMLElement),
-  activityState: byId("activity-state", HTMLElement),
-  packetAge: byId("packet-age", HTMLElement),
-  snapshot: byId("snapshot", HTMLElement),
-  copySnapshot: byId("copy-snapshot", HTMLButtonElement),
-  log: byId("log", HTMLOListElement),
-  clearLog: byId("clear-log", HTMLButtonElement),
-  downloadLog: byId("download-log", HTMLButtonElement),
-  chart: byId("chart", HTMLCanvasElement),
+  connect: byId<HTMLButtonElement>("connect-real"), demo: byId<HTMLButtonElement>("connect-simulator"),
+  disconnect: byId<HTMLButtonElement>("disconnect"), start: byId<HTMLButtonElement>("start"),
+  pause: byId<HTMLButtonElement>("pause"), stop: byId<HTMLButtonElement>("stop"),
+  down: byId<HTMLButtonElement>("power-down"), up: byId<HTMLButtonElement>("power-up"),
+  watts: byId<HTMLInputElement>("base-power"), duration: byId<HTMLSelectElement>("duration"),
+  options: byId<HTMLFieldSetElement>("workout-options"), profile: byId("workout-profile"),
+  summary: byId("summary"), newRide: byId<HTMLButtonElement>("new-ride"),
 };
-
+mountWorkoutPicker(ui.options);
+let historyRecords = listRides();
+let recovery = loadCheckpoint();
+let historyKey = "";
 let trainer: Trainer | undefined;
-let trainerKind: "real" | "simulator" | undefined;
-let subscriptions: Unsubscribe[] = [];
-const logs: LogEntry[] = [];
-const observedErrors = new WeakSet();
-const powerSamples: number[] = [];
-const cadenceSamples: number[] = [];
-let lastTelemetryAt: number | undefined;
-const qualification = createQualificationPanel(log);
+let ride: Ride | undefined;
+let connecting = false;
+let appError = "";
+let previousRecord = loadRide();
+let savedAt = 0;
+let savedStatus = "";
+let savedToDevice = true;
+let archivedRideId: string | undefined;
+let profileKey = "";
+const supportsBluetooth = bluetoothSupported();
+byId("browser-help").hidden = supportsBluetooth;
 
-function log(message: string, kind: LogKind = "info"): void {
-  const entry = { at: new Date().toISOString(), kind, message };
-  logs.push(entry);
-  if (logs.length > 500) logs.shift();
-  const item = document.createElement("li");
-  item.textContent = `${entry.at.slice(11, 19)}  ${message}`;
-  if (kind === "error") item.className = "error";
-  ui.log.prepend(item);
-  while (ui.log.children.length > 80) ui.log.lastElementChild?.remove();
+function text(id: string, value: string): void {
+  const element = byId(id);
+  if (element.textContent !== value) element.textContent = value;
+}
+function mode(): WorkoutMode {
+  return document.querySelector<HTMLInputElement>('input[name="workout"]:checked')?.value as WorkoutMode ?? "endurance";
+}
+function automaticTarget(): number {
+  const previous = historyRecords.find(record => record.completed && !record.simulator && record.averagePower !== null);
+  return suggestedTarget(mode(), previous?.averagePower ?? undefined);
+}
+function selectedWorkout() {
+  const watts = ui.watts.value.trim() === "" ? automaticTarget() : ui.watts.valueAsNumber;
+  return createWorkout(mode(), Number(ui.duration.value), watts);
+}
+function previewWorkout() {
+  try { return selectedWorkout(); }
+  catch { return createWorkout(mode(), Number(ui.duration.value), 100); }
 }
 
-function logTrainerError(error: unknown, kind = trainerKind): void {
-  if (typeof error === "object" && error !== null) {
-    if (observedErrors.has(error)) return;
-    observedErrors.add(error);
+function showRecoveredWorkout(): void {
+  const workout = ride?.workout;
+  if (!workout) return;
+  const selected = WORKOUT_OPTIONS.find(option => option.name === workout.name);
+  if (selected) {
+    const input = ui.options.querySelector<HTMLInputElement>(`input[value="${selected.id}"]`);
+    if (input) input.checked = true;
   }
-  qualification.error(kind === "real");
-  log(error instanceof Error ? error.message : String(error), "error");
+  const minutes = String((workout.seconds ?? 0) / 60);
+  if ([...ui.duration.options].some(option => option.value === minutes)) ui.duration.value = minutes;
+  window.scrollTo(0, 0);
 }
 
-function bind(next: Trainer, kind: "real" | "simulator"): void {
-  for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
-  trainer = next;
-  trainerKind = kind;
-  subscriptions = [
-    next.connection.subscribe((state) => {
-      renderState(next);
-      renderSnapshot();
-      log(`Connection: ${state}`, state === "error" ? "error" : "info");
-    }),
-    next.control.subscribe((state) => {
-      renderState(next);
-      renderSnapshot();
-      log(`Control: ${state}`);
-    }),
-    next.activity.subscribe((state) => {
-      renderState(next);
-      renderSnapshot();
-      log(`Activity: ${state}`);
-    }),
-    next.telemetry.subscribe((value) => {
-      if (value) {
-        lastTelemetryAt = Date.now();
-        renderTelemetry(value);
-        qualification.telemetry(kind === "real");
-      }
-      renderSnapshot();
-    }),
-    next.capabilities.subscribe((value) => {
-      renderCapabilities(value);
-      renderSnapshot();
-    }),
-    next.controlResponses.subscribe(({ requestOpcode, resultCode }) => {
-      qualification.response(kind === "real");
-      log(
-        `Control response 0x${requestOpcode.toString(16).padStart(2, "0")}: result 0x${resultCode.toString(16).padStart(2, "0")}`,
-      );
-    }),
-    next.errors.subscribe((error) => {
-      logTrainerError(error, kind);
-    }),
-  ];
-  renderState(next);
-  renderSnapshot();
-}
-
-async function connect(kind: "real" | "simulator"): Promise<void> {
-  if (
-    trainer &&
-    trainer.connection.current !== "disconnected" &&
-    trainer.connection.current !== "error"
-  )
-    return;
-  const resistanceControlFormat = ui.resistanceFormat.value === "uint8" ? "uint8" : "sint16";
-  const next =
-    kind === "real"
-      ? createWebBluetoothTrainer({}, { resistanceControlFormat })
-      : createMockTrainer({ resistanceControlFormat }, { resistanceControlFormat });
-  bind(next, kind);
-  log(kind === "real" ? "Opening Bluetooth device chooser." : "Starting simulated trainer.");
-
+async function connect(simulator: boolean, recover = false): Promise<void> {
+  if (connecting || trainer?.connection.current === "ready") return;
+  connecting = true;
+  appError = "";
+  persistRide(true);
+  savedAt = 0;
+  savedStatus = "";
+  ride?.dispose();
   try {
-    await next.connect();
-    ui.deviceName.textContent = next.deviceName ?? "Unnamed FTMS trainer";
-    qualification.connected(kind === "real", next.deviceName);
-    log(`Connected to ${next.deviceName ?? "FTMS trainer"}.`);
-  } catch (error) {
-    logTrainerError(error, kind);
-  }
-}
-
-async function run(label: string, operation: () => Promise<unknown>): Promise<void> {
-  try {
-    await operation();
-    log(label);
-  } catch (error) {
-    logTrainerError(error);
-  }
-}
-
-function renderState(value: Trainer): void {
-  const connection = value.connection.current;
-  const control = value.control.current;
-  const activity = value.activity.current;
-  const status =
-    connection !== "ready"
-      ? connection
-      : activity !== "idle"
-        ? activity
-        : control === "owned"
-          ? "controlling"
-          : "connected";
-  ui.status.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-  ui.statusDot.className = `status-dot ${status}`;
-  const inactive = connection === "disconnected" || connection === "error";
-  const commandReady = connection === "ready" && control === "owned";
-
-  ui.connectReal.disabled = !inactive;
-  ui.connectSimulator.disabled = !inactive;
-  ui.resistanceFormat.disabled = !inactive;
-  ui.disconnect.disabled = inactive || connection === "connecting";
-  ui.requestControl.disabled =
-    connection !== "ready" || control === "requesting" || control === "owned";
-  ui.start.disabled = !commandReady || !(activity === "idle" || activity === "paused");
-  ui.pause.disabled = !commandReady || activity !== "running";
-  ui.reset.disabled = !commandReady;
-  ui.stop.disabled =
-    !commandReady || !(activity === "running" || activity === "paused" || activity === "stopping");
-
-  for (const form of [ui.powerForm, ui.resistanceForm, ui.gradeForm]) {
-    const button = form.querySelector<HTMLButtonElement>("button[type=submit]");
-    if (button) button.disabled = !commandReady;
-  }
-}
-
-function renderTelemetry(value: TrainerTelemetry): void {
-  const power = value.instantaneousPowerWatts;
-  const cadence = value.instantaneousCadenceRpm;
-  ui.power.textContent = power === undefined ? "—" : Math.round(power).toString();
-  ui.cadence.textContent = cadence === undefined ? "—" : Math.round(cadence).toString();
-  ui.speed.textContent =
-    value.instantaneousSpeedKph === undefined ? "—" : value.instantaneousSpeedKph.toFixed(1);
-  ui.distance.textContent =
-    value.totalDistanceMeters === undefined ? "—" : (value.totalDistanceMeters / 1000).toFixed(2);
-
-  powerSamples.push(power ?? 0);
-  cadenceSamples.push(cadence ?? 0);
-  if (powerSamples.length > 60) powerSamples.shift();
-  if (cadenceSamples.length > 60) cadenceSamples.shift();
-  drawChart();
-}
-
-function renderCapabilities(value: TrainerCapabilities | null): void {
-  ui.capabilities.className = "capabilities";
-  ui.capabilities.replaceChildren();
-  if (!value) {
-    ui.capabilities.className = "capabilities empty-state";
-    ui.capabilities.textContent = "Connect a trainer to inspect its FTMS features.";
-    return;
-  }
-  const entries: [string, boolean | string][] = [
-    ["Power measurement", value.supportsPowerMeasurement],
-    ["Cadence", value.supportsCadence],
-    ["Resistance measurement", value.supportsResistanceMeasurement],
-    ["ERG power target", value.supportsPowerTarget],
-    ["Resistance target", value.supportsResistanceTarget],
-    ["Grade simulation", value.supportsSimulation],
-    ["Spindown", value.supportsSpindown],
-  ];
-  if (value.powerRange)
-    entries.push(["Power range", `${value.powerRange.minimum}–${value.powerRange.maximum} W`]);
-  if (value.resistanceRange)
-    entries.push([
-      "Resistance range",
-      `${value.resistanceRange.minimum}–${value.resistanceRange.maximum}`,
-    ]);
-
-  for (const [label, supported] of entries) {
-    const item = document.createElement("span");
-    item.className = `capability ${supported === true ? "yes" : ""}`;
-    item.textContent =
-      typeof supported === "boolean"
-        ? `${supported ? "✓" : "×"} ${label}`
-        : `${label}: ${supported}`;
-    ui.capabilities.append(item);
-  }
-
-  if (value.powerRange) {
-    ui.powerInput.min = String(value.powerRange.minimum);
-    ui.powerInput.max = String(value.powerRange.maximum);
-    ui.powerInput.step = String(value.powerRange.increment);
-  }
-  if (value.resistanceRange) {
-    ui.resistanceInput.min = String(value.resistanceRange.minimum);
-    ui.resistanceInput.max = String(value.resistanceRange.maximum);
-    ui.resistanceInput.step = String(value.resistanceRange.increment);
-  }
-}
-
-function getDebugSnapshot(): object {
-  return {
-    capturedAt: new Date().toISOString(),
-    deviceName: trainer?.deviceName ?? null,
-    connection: trainer?.connection.current ?? "disconnected",
-    control: trainer?.control.current ?? "unavailable",
-    activity: trainer?.activity.current ?? "idle",
-    capabilities: trainer?.capabilities.current ?? null,
-    telemetry: trainer?.telemetry.current ?? null,
-  };
-}
-
-function renderSnapshot(): void {
-  ui.connectionState.textContent = trainer?.connection.current ?? "disconnected";
-  ui.controlState.textContent = trainer?.control.current ?? "unavailable";
-  ui.activityState.textContent = trainer?.activity.current ?? "idle";
-  if (!lastTelemetryAt || !trainer?.telemetry.current) {
-    ui.packetAge.textContent = "—";
-  } else {
-    const ageSeconds = Math.max(0, (Date.now() - lastTelemetryAt) / 1000);
-    ui.packetAge.textContent =
-      ageSeconds < 10 ? `${ageSeconds.toFixed(1)} s` : `${Math.round(ageSeconds)} s`;
-  }
-  ui.snapshot.textContent = JSON.stringify(getDebugSnapshot(), null, 2);
-}
-
-function drawChart(): void {
-  const canvas = ui.chart;
-  const rect = canvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(rect.width * ratio));
-  const height = Math.max(1, Math.round(rect.height * ratio));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  context.clearRect(0, 0, width, height);
-  context.strokeStyle = "#263223";
-  context.lineWidth = ratio;
-  for (let row = 1; row < 5; row += 1) {
-    const y = (height / 5) * row;
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(width, y);
-    context.stroke();
-  }
-
-  const plot = (samples: number[], max: number, color: string): void => {
-    if (samples.length < 2) return;
-    context.beginPath();
-    context.strokeStyle = color;
-    context.lineWidth = 2 * ratio;
-    samples.forEach((sample, index) => {
-      const x = (index / 59) * width;
-      const y = height - Math.min(sample / max, 1) * (height - 12 * ratio) - 6 * ratio;
-      if (index === 0) context.moveTo(x, y);
-      else context.lineTo(x, y);
-    });
-    context.stroke();
-  };
-  plot(powerSamples, 500, "#c8ff44");
-  plot(cadenceSamples, 130, "#52d9d2");
-}
-
-function downloadJson(filename: string, value: object): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-ui.connectReal.addEventListener("click", () => void connect("real"));
-ui.connectSimulator.addEventListener("click", () => void connect("simulator"));
-ui.disconnect.addEventListener("click", () => {
-  const current = trainer;
-  if (!current) return;
-  void run("Disconnected.", () => current.disconnect());
-});
-ui.requestControl.addEventListener("click", () => {
-  const current = trainer;
-  if (current) void run("Control granted.", () => current.acquireControl());
-});
-ui.start.addEventListener("click", () => {
-  const current = trainer;
-  if (current) void run("Training started.", () => current.start());
-});
-ui.pause.addEventListener("click", () => {
-  const current = trainer;
-  if (current) void run("Training paused.", () => current.pause());
-});
-ui.reset.addEventListener("click", () => {
-  const current = trainer;
-  if (current) void run("Trainer reset.", () => current.reset());
-});
-ui.stop.addEventListener("click", () => {
-  const current = trainer;
-  if (current) void run("Resistance stopped.", () => current.stop());
-});
-
-ui.powerForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const watts = ui.powerInput.valueAsNumber;
-  const current = trainer;
-  if (current) void run(`ERG target set to ${watts} W.`, () => current.setTargetPower(watts));
-});
-ui.resistanceForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const level = ui.resistanceInput.valueAsNumber;
-  const current = trainer;
-  if (current)
-    void run(`Resistance level set to ${level}.`, () => current.setResistanceLevel(level));
-});
-ui.gradeForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const gradePercent = ui.gradeInput.valueAsNumber;
-  const current = trainer;
-  if (current) {
-    void run(`Simulated grade set to ${gradePercent}%.`, () =>
-      current.setSimulation({ gradePercent }),
-    );
-  }
-});
-
-ui.copySnapshot.addEventListener("click", () => {
-  void (async () => {
-    try {
-      const clipboard = Reflect.get(navigator, "clipboard") as Clipboard | undefined;
-      if (!clipboard) throw new Error("Clipboard access is unavailable in this browser context.");
-      await clipboard.writeText(JSON.stringify(getDebugSnapshot(), null, 2));
-      log("Copied the current library snapshot.");
-    } catch (error) {
-      log(error instanceof Error ? error.message : "Could not copy snapshot.", "error");
+    // connect() stays in this click's activation so Chrome can open its Bluetooth chooser.
+    const next = createTrainerConnection(simulator);
+    trainer = next;
+    ride = new Ride(next, simulator);
+    const pending = next.connect();
+    render();
+    const capabilities = await pending;
+    if (recover && recovery) {
+      ride.restore(recovery.workout, recovery.record, recovery.adjustment);
+      savedAt = ride.elapsed;
+      savedStatus = "paused";
+      appError = "Ride recovered and paused. Start pedaling, then press Resume ride.";
+      showRecoveredWorkout();
     }
-  })();
-});
+    if (!capabilities.supportsPowerTarget) appError = "Connected, but this trainer does not advertise ERG power control. Trainer Lab has the other available controls.";
+  } catch (error) {
+    appError = error instanceof Error && error.name === "NotFoundError"
+      ? "No trainer selected. Power it on, close other trainer apps, and try Connect trainer again."
+      : `${error instanceof Error ? error.message : String(error)} Check Bluetooth permission and close other trainer apps, then try again.`;
+  } finally { connecting = false; render(); }
+}
 
-ui.clearLog.addEventListener("click", () => {
-  logs.splice(0);
-  ui.log.replaceChildren();
-  log("Session log cleared.");
-});
+async function act(operation: () => Promise<void>): Promise<void> {
+  appError = "";
+  try {
+    const pending = operation();
+    render();
+    await pending;
+  } catch (error) { appError = error instanceof Error ? error.message : String(error); }
+  render();
+}
 
-ui.downloadLog.addEventListener("click", () => {
-  const bundle = { exportedAt: new Date().toISOString(), snapshot: getDebugSnapshot(), logs };
-  downloadJson(`trainer-lab-${new Date().toISOString().replaceAll(":", "-")}.json`, bundle);
-});
+function actionHint(status: RideStatus, active: boolean, connected: boolean): string {
+  if (status === "interrupted") return "Disconnect and reconnect before your next ride.";
+  if (status === "finished") {
+    if (!ride?.elapsed) return "Ready for another try.";
+    return savedToDevice ? "Your ride is saved below." : "Download your ride below to keep it.";
+  }
+  if (ride?.busy) return "Waiting for the trainer…";
+  if (active) return "Esc to end · save automatically";
+  return connected ? "Start pedaling, then start your ride." : "Connect your trainer to begin.";
+}
 
-window.addEventListener("resize", drawChart);
-window.addEventListener("beforeunload", () => {
-  if (trainer && trainer.connection.current !== "disconnected") void trainer.disconnect();
+function render(): void {
+  const connected = trainer?.connection.current === "ready";
+  const active = ride?.active ?? false;
+  const status = ride?.status ?? "ready";
+  const ended = status === "finished" || status === "interrupted";
+  persistRide();
+  const workout = ride?.workout ?? previewWorkout();
+  const elapsed = ride?.elapsed ?? 0;
+  const stage = currentStep(workout, elapsed);
+  const telemetry = connected ? ride?.telemetry : null;
+  const target = ride?.workout ? ride.target : trainerWatts(stage.step.watts, trainer?.capabilities.current?.powerRange);
+  document.body.classList.toggle("riding", active);
+  ui.connect.hidden = Boolean(connected);
+  ui.demo.hidden = Boolean(connected);
+  ui.connect.disabled = connecting || !supportsBluetooth;
+  ui.demo.disabled = connecting;
+  ui.disconnect.hidden = !connected;
+  ui.disconnect.disabled = active || Boolean(ride?.busy);
+  byId("demo-badge").hidden = !ride?.simulator || !connected;
+  byId("connection-dot").classList.toggle("connected", Boolean(connected));
+  text("device-name", connecting ? "Finding your trainer…" : connected ? (trainer?.deviceName ?? "FTMS trainer") : "Let’s find your trainer");
+  text("connection-detail", connected ? (ride?.simulator ? "Demo data · your physical trainer is not connected" : trainer?.capabilities.current?.supportsPowerTarget ? "Bluetooth connected · ERG power control" : "Bluetooth connected · ERG unavailable") : "Bluetooth FTMS · Chrome or Edge on your computer");
+  text("ride-state", { ready: "STANDBY", starting: "STARTING", riding: "● RIDING", paused: "PAUSED", stopping: "STOPPING", finished: ride?.elapsed && savedToDevice ? "SAVED" : "ENDED", interrupted: "INTERRUPTED" }[status]);
+  byId("ride-state").classList.toggle("live", status === "riding");
+  text("ride-label", active ? workout.name.toUpperCase() : ended ? "TIME WELL SPENT" : "READY WHEN YOU ARE");
+  text("step-name", ended ? (status === "interrupted" ? "Let’s check the connection." : "That’s your ride.") : active ? stage.step.name : "Find your rhythm.");
+  text("step-count", active ? (workout.seconds === null ? "NO FINISH LINE" : `INTERVAL ${stage.index + 1} / ${workout.steps.length}`) : "A little progress, every day.");
+  text("power", telemetry?.instantaneousPowerWatts === undefined ? "—" : String(Math.round(telemetry.instantaneousPowerWatts)));
+  text("cadence", telemetry?.instantaneousCadenceRpm === undefined ? "—" : String(Math.round(telemetry.instantaneousCadenceRpm)));
+  text("power-caption", ride?.simulator && connected ? "Simulated power · demo mode" : connected && !telemetry ? "Waiting for fresh trainer data…" : "Live from your trainer");
+  text("target", String(target));
+  renderFeedback(telemetry?.instantaneousPowerWatts, target, telemetry?.instantaneousSpeedKph, status === "riding");
+  text("elapsed", formatTime(Math.floor(elapsed)));
+  text("total-time", workout.seconds === null ? "elapsed" : `/ ${formatTime(workout.seconds)}`);
+  text("remaining", formatTime(stage.remaining));
+  text("remaining-label", workout.seconds === null ? "YOUR PACE" : "INTERVAL LEFT");
+  const next = workout.steps[stage.index + 1];
+  text("next-step", next ? `next: ${next.name.toLowerCase()}` : workout.seconds === null ? "ride as long as you like" : "finish feeling good");
+  ui.start.hidden = active && status !== "paused" || ended;
+  ui.start.disabled = !connected || !trainer?.capabilities.current?.supportsPowerTarget || Boolean(ride?.busy) || !ui.watts.checkValidity();
+  ui.start.textContent = status === "paused" ? "Resume ride →" : "Start ride →";
+  ui.pause.hidden = status !== "riding";
+  ui.pause.disabled = Boolean(ride?.busy);
+  ui.stop.hidden = !active;
+  ui.stop.disabled = status === "stopping";
+  ui.stop.textContent = status === "stopping" ? "Stopping…" : "■ End ride";
+  ui.up.disabled = ui.down.disabled = !["riding", "paused"].includes(status) || Boolean(ride?.busy);
+  const targetStep = Math.max(5, trainer?.capabilities.current?.powerRange?.increment ?? 1);
+  ui.down.setAttribute("aria-label", `Decrease target by ${targetStep} watts`);
+  ui.up.setAttribute("aria-label", `Increase target by ${targetStep} watts`);
+  const stepLabel = document.querySelector(".target-controls span");
+  if (stepLabel) stepLabel.textContent = `${targetStep} W`;
+  ui.options.disabled = ui.watts.disabled = status !== "ready";
+  ui.duration.disabled = status !== "ready" || mode() === "free";
+  text("action-hint", actionHint(status, active, Boolean(connected)));
+  text("workout-duration", workout.seconds === null ? "OPEN ENDED · ERG" : `${Math.round(workout.seconds / 60)} MIN · ERG WORKOUT`);
+  text("profile-end", workout.seconds === null ? "YOUR CALL" : `${Math.round(workout.seconds / 60)} MIN`);
+  text("target-help", ui.watts.value.trim() === ""
+    ? `Auto suggests ${automaticTarget()} W for this ride. This is a starting point, not a fitness test. Adjust any time.`
+    : "Your own target is selected. Clear the field to let the app choose a starting power.");
+  text("setup-footer", mode() === "free" ? "Change the target any time with the + and − buttons." : `Your warm-up starts gently at ${trainerWatts(workout.steps[0]!.watts, trainer?.capabilities.current?.powerRange)} W.`);
+  renderProfile(workout, stage.index, elapsed, active);
+  text("distance", `${(ride?.distanceKm ?? 0).toFixed(2)} km`);
+  text("average", `${ride?.averagePower ?? "—"} W`);
+  text("work", `${Math.round(ride?.workKj ?? 0)} kJ`);
+  const error = appError || ride?.error || (!savedToDevice ? "Browser storage is unavailable. Keep this tab open, then end your ride and download its CSV to keep your data." : "");
+  byId("message").hidden = !error;
+  text("message", error);
+  renderSummary(ended);
+  renderSavedRides(active);
+  void keepScreenAwake(active);
+}
+
+function renderProfile(workout: ReturnType<typeof createWorkout>, index: number, elapsed: number, active: boolean): void {
+  const adjustment = ride?.adjustment ?? 0;
+  const key = JSON.stringify([workout, adjustment, trainer?.capabilities.current?.powerRange]);
+  if (key !== profileKey) {
+    profileKey = key;
+    ui.profile.replaceChildren();
+    const powers = workout.steps.map(step => trainerWatts(step.watts + adjustment, trainer?.capabilities.current?.powerRange));
+    const max = Math.max(100, ...powers);
+    workout.steps.forEach((step, i) => {
+      const bar = document.createElement("div");
+      bar.className = `profile-block ${step.effort}`;
+      bar.style.flex = String(Number.isFinite(step.seconds) ? step.seconds : 1);
+      bar.style.height = `${Math.max(12, powers[i]! / max * 100)}%`;
+      bar.title = `${step.name}: ${powers[i]} W${Number.isFinite(step.seconds) ? ` · ${formatTime(step.seconds)}` : ""}`;
+      ui.profile.append(bar);
+    });
+    const marker = document.createElement("span");
+    marker.className = "profile-marker";
+    ui.profile.append(marker);
+    ui.profile.setAttribute("aria-label", workout.steps.map((step, i) => `${step.name}, ${powers[i]} watts`).join("; "));
+  }
+  ui.profile.querySelectorAll(".profile-block").forEach((bar, i) => {
+    bar.classList.toggle("current", active && i === index);
+    bar.classList.toggle("done", i < index);
+  });
+  const marker = ui.profile.querySelector<HTMLElement>(".profile-marker")!;
+  marker.hidden = !ride?.workout || workout.seconds === null;
+  marker.style.left = `${Math.min(100, elapsed / (workout.seconds ?? 1) * 100)}%`;
+}
+
+function persistRide(force = false): void {
+  if (!ride?.startedAt || !ride.workout || ride.elapsed <= 0 || (!force && ride.elapsed - savedAt < 5 && savedStatus === ride.status)) return;
+  previousRecord = ride.record();
+  savedAt = ride.elapsed;
+  savedStatus = ride.status;
+  const reachedEnd = ride.workout.seconds !== null && ride.elapsed >= ride.workout.seconds;
+  if (ride.status === "finished" || reachedEnd || ride.startedAt === archivedRideId) {
+    savedToDevice = saveRide(previousRecord);
+    if (savedToDevice) {
+      const cleared = clearCheckpoint();
+      if (cleared) recovery = null;
+      else appError = "Ride saved, but recovery data could not be cleared. Export a backup of your rides.";
+    }
+  } else {
+    recovery = { version: 1, workout: ride.workout, record: previousRecord, adjustment: ride.adjustment, savedAt: new Date().toISOString() };
+    savedToDevice = saveCheckpoint(recovery);
+  }
+  historyRecords = listRides();
+}
+function downloadRide(record: RideRecord): void {
+  downloadText(rideCsv(record), `open-trainer-${record.simulator ? "demo-" : ""}${record.startedAt.replaceAll(":", "-")}.csv`, "text/csv;charset=utf-8");
+}
+function renderSavedRides(active: boolean): void {
+  const card = byId("recovery");
+  card.hidden = !recovery || active;
+  if (recovery) {
+    text("recovery-detail", `${recovery.record.simulator ? "Demo · " : ""}${recovery.workout.name} · ${formatTime(Math.floor(recovery.record.seconds))} recorded. Reconnect, then resume when ready.`);
+    byId<HTMLButtonElement>("restore-ride").disabled = connecting || Boolean(trainer?.connection.current === "ready" && ride?.status === "interrupted");
+  }
+  const key = JSON.stringify(historyRecords.map(record => [record.startedAt, record.seconds, record.completed]));
+  if (key !== historyKey) {
+    historyKey = key;
+    renderRideHistory(byId("ride-history"), historyRecords, downloadRide);
+  }
+}
+function renderSummary(ended: boolean): void {
+  ui.summary.hidden = (!previousRecord && ride?.status !== "finished") || Boolean(ride?.active);
+  ui.newRide.hidden = ride?.status !== "finished";
+  byId("download").hidden = !previousRecord;
+  if (!previousRecord) {
+    text("summary-label", "NO RIDE DATA RECORDED");
+    text("summary-title", "Ready for another try.");
+    text("summary-detail", "This attempt ended before ride data was recorded.");
+    return;
+  }
+  const record = previousRecord;
+  const currentRecord = ended && record.startedAt === ride?.startedAt;
+  text("summary-label", savedToDevice ? "SAVED ON THIS DEVICE" : "DOWNLOAD TO KEEP THIS RIDE · BROWSER STORAGE UNAVAILABLE");
+  text("summary-title", currentRecord ? (record.simulator ? "Your demo ride." : "A ride worth showing up for.") : "Your last saved ride");
+  text("summary-detail", `${record.simulator ? "Simulator · " : ""}${record.name} · ${formatTime(Math.floor(record.seconds))} · ${record.averagePower ?? "—"} W average · ${record.distanceKm.toFixed(2)} km · ${record.completed ? "Workout complete" : "Partial ride"}`);
+}
+
+ui.connect.addEventListener("click", () => void connect(false));
+ui.demo.addEventListener("click", () => void connect(true));
+ui.disconnect.addEventListener("click", () => void act(async () => { await trainer?.disconnect(); }));
+ui.start.addEventListener("click", () => {
+  if (!ride || !ui.watts.reportValidity()) return;
+  const beginning = ride.status === "ready";
+  void act(() => ride!.status === "paused" ? ride!.resume() : ride!.start(selectedWorkout()));
+  if (beginning) window.scrollTo(0, 0);
 });
-const initialTrainer = createMockTrainer();
-renderState(initialTrainer);
-renderSnapshot();
-drawChart();
-log("Trainer Companion ready. The simulator requires no hardware.");
-setInterval(renderSnapshot, 1_000);
+ui.pause.addEventListener("click", () => void act(async () => { await ride?.pause(); }));
+ui.stop.addEventListener("click", () => void act(async () => { await ride?.finish(); }));
+ui.down.addEventListener("click", () => void act(async () => { await ride?.adjust(-5); }));
+ui.up.addEventListener("click", () => void act(async () => { await ride?.adjust(5); }));
+ui.newRide.addEventListener("click", () => {
+  if (!trainer || !ride || ride.status !== "finished") return;
+  persistRide(true);
+  const simulator = ride.simulator;
+  ride.dispose();
+  ride = new Ride(trainer, simulator);
+  savedAt = 0;
+  savedStatus = "";
+  appError = "";
+  render();
+});
+for (const element of [ui.options, ui.duration, ui.watts]) element.addEventListener("input", render);
+byId("download").addEventListener("click", () => { if (previousRecord) downloadRide(previousRecord); });
+byId("export-data").addEventListener("click", () => void act(async () => {
+  persistRide(true);
+  if (!savedToDevice && previousRecord) {
+    downloadRide(previousRecord);
+    appError = "Browser storage could not save the latest ride, so its current CSV download was started instead. The full JSON backup is unavailable until saving works again.";
+    return;
+  }
+  downloadText(exportAllData(), `open-trainer-backup-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+}));
+byId("restore-ride").addEventListener("click", () => {
+  if (!recovery) return;
+  if (trainer?.connection.current !== "ready") { void connect(recovery.record.simulator, true); return; }
+  if (ride?.status !== "ready" || ride.simulator !== recovery.record.simulator) {
+    appError = "Disconnect this trainer first, then choose Connect to recover.";
+    render();
+    return;
+  }
+  void act(async () => {
+    ride!.restore(recovery!.workout, recovery!.record, recovery!.adjustment);
+    showRecoveredWorkout();
+  });
+});
+byId("archive-recovery").addEventListener("click", () => {
+  if (!recovery || ride?.active) return;
+  if (saveRide(recovery.record) && clearCheckpoint()) {
+    archivedRideId = recovery.record.startedAt;
+    recovery = null;
+    historyRecords = listRides();
+  } else appError = "Could not update browser storage. Export a backup to keep your data.";
+  render();
+});
+byId("fullscreen").addEventListener("click", () => void act(async () => {
+  if (document.fullscreenElement) await document.exitFullscreen();
+  else await document.documentElement.requestFullscreen();
+}));
+byId("lab-link").addEventListener("click", (event) => {
+  if (ride?.active) { event.preventDefault(); appError = "End your ride before opening Trainer Lab."; render(); }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && ride?.active) { event.preventDefault(); void act(() => ride!.finish()); }
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistRide(true); resetWakeLockRequest(); void keepScreenAwake(ride?.active ?? false); });
+window.addEventListener("pagehide", () => persistRide(true));
+window.addEventListener("beforeunload", (event) => {
+  if (ride?.active) { persistRide(true); event.preventDefault(); event.returnValue = ""; }
+});
+setInterval(() => { void ride?.tick().then(render); if (!ride) render(); }, 250);
+render();
