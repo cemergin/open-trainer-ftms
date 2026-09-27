@@ -1,0 +1,176 @@
+.encoding-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  margin-bottom: var(--space-5);
+}
+.encoding-field select,
+.qualification-panel input:not([type="checkbox"]),
+.qualification-panel textarea {
+  min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface-inset);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+.qualification-panel textarea {
+  width: 100%;
+  resize: vertical;
+}
+.qualification-panel :is(input, textarea):focus-visible,
+.encoding-field select:focus-visible {
+  outline: var(--focus-width) solid var(--color-accent);
+  outline-offset: var(--focus-offset);
+}
+.qualification-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.qualification-heading .eyebrow {
+  display: block;
+}
+.qualification-heading strong {
+  font-size: var(--text-heading);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+.qualification-heading::after {
+  content: "+";
+  color: var(--color-accent);
+  font-size: 24px;
+}
+.qualification-panel[open] > .qualification-heading::after {
+  content: "−";
+}
+.progress-badge {
+  font: var(--text-caption) var(--font-mono);
+  color: var(--color-text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+.progress-badge.complete,
+.qualification-panel .pass {
+  color: var(--color-accent);
+}
+.qualification-panel .fail {
+  color: var(--color-danger-text);
+}
+.qualification-intro,
+.qualification-panel p,
+.qualification-blockers {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  line-height: 1.65;
+}
+.qualification-intro {
+  margin: var(--space-4) 0;
+}
+.safety-acknowledgement,
+.qualification-pass {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  line-height: 1.6;
+  font-size: var(--text-small);
+}
+.safety-acknowledgement {
+  padding: var(--space-4);
+  background: var(--color-accent-subtle);
+  border-radius: var(--radius-control);
+  margin: var(--space-5) 0;
+}
+.safety-acknowledgement input,
+.qualification-pass input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+}
+.qualification-metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.qualification-metadata label,
+.qualification-evidence > label:not(.qualification-pass),
+.qualification-general-notes {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-small);
+}
+.qualification-counters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+.qualification-counters > div {
+  padding: var(--space-3);
+  background: var(--color-surface-inset);
+  border-radius: var(--radius-control);
+}
+.qualification-counters dt {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
+}
+.qualification-counters dd {
+  margin: var(--space-2) 0 0;
+  font: var(--text-small) var(--font-mono);
+}
+.qualification-checks {
+  padding: 0;
+  margin: var(--space-5) 0;
+  list-style: none;
+}
+.qualification-check {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-6);
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--color-border);
+}
+.qualification-check h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+}
+.qualification-check .qualification-expected {
+  margin-top: var(--space-2);
+  color: var(--color-text-secondary);
+}
+.qualification-evidence {
+  display: grid;
+  gap: var(--space-3);
+}
+.qualification-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+.qualification-footer .button-row {
+  flex-shrink: 0;
+}
+@media (max-width: 800px) {
+  .qualification-metadata,
+  .qualification-counters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .qualification-check {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+  .qualification-footer {
+    flex-direction: column;
+  }
+}

@@ -1,3 +1,4 @@
+import { byId } from "./ui/dom";
 import {
   downloadText,
   loadQualificationDraft,
@@ -12,16 +13,6 @@ import {
   qualificationReportFilename,
   type QualificationMetadata,
 } from "./qualification.js";
-
-interface ElementConstructor<T extends HTMLElement> {
-  new (): T;
-  readonly name: string;
-}
-function byId<T extends HTMLElement>(id: string, constructor: ElementConstructor<T>): T {
-  const element = document.getElementById(id);
-  if (!(element instanceof constructor)) throw new Error(`Missing or invalid #${id}`);
-  return element;
-}
 
 interface QualificationPanel {
   readonly resistanceControlFormat: QualificationMetadata["resistanceControlFormat"];

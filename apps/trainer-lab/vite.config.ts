@@ -18,6 +18,8 @@ if (!/^[0-9a-f]{40}$/i.test(sourceCommit)) throw new Error("The source commit is
 const runtimeFingerprint = computeRuntimeFingerprint(workspaceRoot);
 
 export default defineConfig({
+  base: "./",
+  build: { rollupOptions: { input: ["index.html", "lab.html"] } },
   define: {
     __FTMS_PACKAGE_VERSION__: JSON.stringify(packageMetadata.version),
     __SOURCE_COMMIT__: JSON.stringify(sourceCommit),
@@ -26,6 +28,7 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 4173,
+    strictPort: true,
   },
   preview: {
     host: "127.0.0.1",
