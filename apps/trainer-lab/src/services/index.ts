@@ -15,10 +15,8 @@ export function bluetoothSupported(): boolean {
 }
 
 let wakeLock: WakeLockSentinel | undefined;
-let wakeRequested = false;
+let wakeRequestPending = false;
 let shouldStayAwake = false;
-
-export function resetWakeLockRequest(): void { wakeRequested = false; }
 
 export async function keepScreenAwake(active: boolean): Promise<void> {
   shouldStayAwake = active;
@@ -28,17 +26,17 @@ export async function keepScreenAwake(active: boolean): Promise<void> {
       wakeLock = undefined;
       await lock.release().catch(() => undefined);
     }
-    wakeRequested = false;
     return;
   }
-  if (!navigator.wakeLock || wakeLock || wakeRequested || document.visibilityState !== "visible") return;
-  wakeRequested = true;
+  if (!navigator.wakeLock || wakeLock || wakeRequestPending || document.visibilityState !== "visible") return;
+  wakeRequestPending = true;
   try {
     const lock = await navigator.wakeLock.request("screen");
     if (!shouldStayAwake) { await lock.release(); return; }
     wakeLock = lock;
     lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = undefined; });
   } catch { /* Wake lock is optional; local riding and controls remain available. */ }
+  finally { wakeRequestPending = false; }
 }
 
 /** Download stays at the browser-service boundary so views do not manage object URLs. */

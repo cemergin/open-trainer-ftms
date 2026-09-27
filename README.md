@@ -49,7 +49,7 @@ npm run build
 npm run verify:package
 ```
 
-The latest local validation passed 107 tests (86 app and 21 library), type checking, production build, and package verification.
+The latest local validation passed 114 tests (92 app and 22 library), type checking, production build, and package verification.
 
 The library follows a test-first workflow. Its suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries. App tests cover workout profiles, recovery and command races, power feedback, history/checkpoint validation, and diagnostic controls.
 

@@ -1,6 +1,6 @@
 import { Ride, type RideStatus, type RideRecord } from "./ride";
 import { createWorkout, currentStep, formatTime, trainerWatts, suggestedTarget, WORKOUT_OPTIONS, type WorkoutMode } from "./workout";
-import { createTrainerConnection, bluetoothSupported, keepScreenAwake, resetWakeLockRequest, loadRide, saveRide, rideCsv, listRides, loadCheckpoint, saveCheckpoint, clearCheckpoint, exportAllData, downloadText, type Trainer } from "./services";
+import { createTrainerConnection, bluetoothSupported, keepScreenAwake, loadRide, saveRide, rideCsv, listRides, loadCheckpoint, saveCheckpoint, clearCheckpoint, exportAllData, downloadText, type Trainer } from "./services";
 import { renderFeedback } from "./ui/feedback";
 import { mountWorkoutPicker } from "./ui/workout-picker";
 import { renderRideHistory } from "./ui/history";
@@ -344,7 +344,7 @@ byId("lab-link").addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && ride?.active) { event.preventDefault(); void act(() => ride!.finish()); }
 });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistRide(true); resetWakeLockRequest(); void keepScreenAwake(ride?.active ?? false); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistRide(true); void keepScreenAwake(ride?.active ?? false); });
 window.addEventListener("pagehide", () => persistRide(true));
 window.addEventListener("beforeunload", (event) => {
   if (ride?.active) { persistRide(true); event.preventDefault(); event.returnValue = ""; }

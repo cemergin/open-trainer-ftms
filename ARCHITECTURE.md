@@ -37,6 +37,8 @@ Commands flowing in are asynchronous and serialized:
 
 Connection, control ownership, and trainer activity are separate states. A trainer can therefore remain connected after control is revoked or remain controlled while paused.
 
+Machine Status `0xFF` revokes control; `0x13` reports a wheel circumference change and leaves ownership intact. These values follow [Bluetooth SIG FTMS v1.0, §4.17, Table 4.26 (page 68)](https://www.bluetooth.org/DocMan/handlers/DownloadDoc.ashx?doc_id=423422#page=68). Regression tests distinguish the two notifications and preserve their raw packet events.
+
 ## TDD layers
 
 ### Implemented
@@ -90,4 +92,4 @@ The rebuilt Lab uses the same FTMS API and UI system. It displays detailed telem
 
 UI tokens, native component styles, and layout styles are separate layers. See [DESIGN.md](./DESIGN.md) for their contracts. Desktop is the present product target, with mobile-specific work deferred. The app uses no frontend framework or backend. The static build supports GitHub Pages hosting over HTTPS; see [GITHUB_PAGES.md](./GITHUB_PAGES.md) for publication and hosted verification.
 
-The latest local validation passed 106 tests (85 app and 21 library), type checking, production build, and package verification. Final Codeflow assessment found no material cleanup candidates; missing analyzer artifacts are recorded privately as unavailable rather than replaced by estimated scores.
+The latest local validation passed 114 tests (92 app and 22 library), type checking, production build, and package verification. Final Codeflow assessment found no material cleanup candidates; missing analyzer artifacts are recorded privately as unavailable rather than replaced by estimated scores.
