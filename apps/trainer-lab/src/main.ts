@@ -336,6 +336,9 @@ function render(): void {
   const targetUnit = controlMode === "erg" ? "W" : controlMode === "terrain" ? "%" : "level";
   text("control-unit", targetUnit);
   text("target", String(controlTarget));
+  const autoPause = ride?.autoPauseSeconds ?? null;
+  byId("auto-pause").hidden = autoPause === null;
+  text("auto-pause-countdown", autoPause === 0 ? "Pausing…" : `${autoPause ?? 20}s`);
   renderFeedback(
     telemetry?.instantaneousPowerWatts,
     controlMode === "erg" ? target : 0,

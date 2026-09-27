@@ -9,6 +9,8 @@ import {
 import { findRoute } from "./routes";
 import { currentStep, trainerWatts, type Workout } from "./workout";
 
+const AUTO_PAUSE_DELAY_MS = 20_000;
+
 export type RideStatus =
   "ready" | "starting" | "riding" | "paused" | "stopping" | "finished" | "interrupted";
 export interface RideSample {
@@ -100,6 +102,13 @@ export class Ride {
   }
   get active(): boolean {
     return ["starting", "riding", "paused", "stopping"].includes(this.status);
+  }
+  get autoPauseSeconds(): number | null {
+    if (this.status !== "riding" || this.#lowCadenceSince === undefined) return null;
+    return Math.max(
+      0,
+      Math.ceil((AUTO_PAUSE_DELAY_MS - (this.now() - this.#lowCadenceSince)) / 1000),
+    );
   }
   get averagePower(): number | null {
     return this.#measuredSeconds > 0
@@ -293,10 +302,12 @@ export class Ride {
       return;
     }
     const cadence = this.telemetry?.instantaneousCadenceRpm;
-    if (cadence !== undefined && cadence < 20 && now - this.#resumedAt > 10000) {
+    if (cadence !== undefined && cadence < 20) {
       this.#lowCadenceSince ??= now;
-      if (now - this.#lowCadenceSince >= 4000) {
-        await this.pause("Pedaling stopped. Ride paused; start pedaling before you resume.");
+      if (now - this.#lowCadenceSince >= AUTO_PAUSE_DELAY_MS) {
+        await this.pause(
+          "Pedaling stopped for 20 seconds. Ride paused; start pedaling, then press Resume ride.",
+        );
         return;
       }
     } else this.#lowCadenceSince = undefined;
