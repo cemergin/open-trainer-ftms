@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111414" />
+    <meta name="description" content="Local Bluetooth FTMS diagnostics, live telemetry, and manual trainer controls." />
+    <title>Trainer Lab — Open Trainer</title>
+    <script type="module" crossorigin src="./assets/lab-B7YDKTDD.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/index-BmblsbRN.js">
+    <link rel="stylesheet" crossorigin href="./assets/lab-WdocVeah.css">
+  </head>
+  <body>
+    <main class="lab-shell">
+      <header class="lab-header">
+        <div><a class="back-link" href="./">← Back to ride</a><p class="eyebrow">OPEN TRAINER / DIAGNOSTICS</p><h1>Trainer Lab<span>.</span></h1><p class="lede">See what your trainer sends. Test one thing at a time.</p></div>
+        <div class="connection-card"><span id="status-dot" class="connection-dot" aria-hidden="true"></span><div><span class="metric-label">CONNECTION</span><strong id="status">Disconnected</strong><span id="device-name">No device connected</span></div></div>
+      </header>
+
+      <section class="panel connect-panel" aria-label="Connect a trainer">
+        <div><h2>Your connection</h2><p id="connection-help">Use the simulator for a hardware-free test, or connect a Bluetooth FTMS trainer.</p><span id="simulator-badge" class="demo-badge" hidden>SIMULATOR · NO PHYSICAL BIKE CONTROL</span></div>
+        <div class="button-row"><button id="connect-simulator" class="button subtle">Use simulator</button><button id="connect-real" class="button primary">Connect trainer ↗</button><button id="disconnect" class="button subtle" disabled>Disconnect</button></div>
+      </section>
+      <p id="browser-help" class="notice" hidden>Bluetooth requires Chrome or Edge on a supported computer and a secure page. The simulator still works here.</p>
+      <p id="message" class="notice error-notice" role="alert" hidden></p>
+
+      <section class="metrics" aria-label="Live trainer measurements">
+        <article class="metric-card power"><span class="metric-label">POWER</span><strong><span id="power">—</span><small> W</small></strong></article>
+        <article class="metric-card"><span class="metric-label">CADENCE</span><strong><span id="cadence">—</span><small> rpm</small></strong></article>
+        <article class="metric-card"><span class="metric-label">TRAINER SPEED</span><strong><span id="speed">—</span><small> km/h</small></strong></article>
+        <article class="metric-card"><span class="metric-label">DISTANCE</span><strong><span id="distance">—</span><small> km</small></strong></article>
+        <article class="metric-card"><span class="metric-label">HEART RATE</span><strong><span id="heart-rate">—</span><small> bpm</small></strong></article>
+        <article class="metric-card"><span class="metric-label">TOTAL ENERGY</span><strong><span id="energy">—</span><small> kcal</small></strong></article>
+        <article class="metric-card"><span class="metric-label">TRAINER ELAPSED</span><strong><span id="elapsed">—</span><small> s</small></strong></article>
+        <article class="metric-card"><span class="metric-label">RESISTANCE</span><strong><span id="measured-resistance">—</span><small> level</small></strong></article>
+      </section>
+      <div class="telemetry-meta"><span id="freshness" class="state-pill">NO DATA</span><span id="last-packet">No telemetry packet received. A dash means the trainer has not reported that field.</span></div>
+
+      <section class="dashboard-grid">
+        <article class="panel chart-panel">
+          <div class="section-heading"><div><p class="eyebrow">LAST 60 PACKETS</p><h2>Live response</h2></div><span class="chart-legend">Power 0–500 W / Cadence 0–130 rpm</span></div>
+          <canvas id="chart" role="img" aria-label="Recent power and cadence. Exact latest values appear in the metrics above."></canvas>
+          <div class="chart-keys"><span>— Power</span><span>— Cadence</span></div>
+          <details><summary>More telemetry fields</summary><dl id="extra-telemetry" class="data-list"></dl></details>
+        </article>
+
+        <article class="panel control-panel">
+          <div class="section-heading"><div><p class="eyebrow">MANUAL COMMANDS</p><h2>Control desk</h2></div><button id="stop" class="button stop-button" disabled>■ Stop</button></div>
+          <p id="command-hint" class="command-hint" role="status">Connect a trainer, then take control.</p>
+          <div class="button-row sequence-controls"><button id="request-control" class="button subtle" disabled>Take control</button><button id="start" class="button subtle" disabled>Start / resume</button><button id="pause" class="button subtle" disabled>Pause</button></div>
+          <div id="simulator-test" class="simulator-test" hidden><button id="test-sequence" class="button primary" disabled>Run 80 W demo test →</button><p>Simulator only: take control → set 80 W → start. Press Stop to end.</p></div>
+          <form id="power-form" class="control-form"><label for="target-power">ERG power <small id="power-support">Connect to check support</small></label><div class="field-action"><div class="input-with-unit"><input id="target-power" type="number" min="0" max="1800" step="1" value="80" required disabled /><span>W</span></div><button type="submit" class="button primary" disabled>Set power</button></div></form>
+          <form id="resistance-form" class="control-form"><label for="resistance">Resistance <small id="resistance-support">Connect to check support</small></label><div class="field-action"><div class="input-with-unit"><input id="resistance" type="number" min="0" max="20" step="0.1" value="5" required disabled /><span>level</span></div><button type="submit" class="button subtle" disabled>Set level</button></div></form>
+          <form id="grade-form" class="control-form"><label for="grade">Simulated grade <small id="grade-support">Connect to check support</small></label><div class="field-action"><div class="input-with-unit"><input id="grade" type="number" min="-10" max="16" step="0.1" value="0" required disabled /><span>%</span></div><button type="submit" class="button subtle" disabled>Set grade</button></div></form>
+          <p class="control-note">Stop remains available while a command is pending. It waits for the trainer’s current command, then requests a stop. Only an acknowledgement confirms the request.</p>
+        </article>
+      </section>
+
+      <section class="lower-grid">
+        <article class="panel"><div class="section-heading"><div><p class="eyebrow">REPORTED BY YOUR TRAINER</p><h2>Capabilities</h2></div></div><div id="capabilities" class="capabilities">Connect to discover support.</div><dl id="feature-flags" class="data-list"></dl></article>
+        <article class="panel"><div class="section-heading"><div><p class="eyebrow">CURRENT STATE</p><h2>Library snapshot</h2></div><div class="button-row"><button id="copy-snapshot" class="button subtle">Copy</button><button id="download-snapshot" class="button subtle">Download</button></div></div><dl class="state-grid"><div><dt>Connection</dt><dd id="connection-state">disconnected</dd></div><div><dt>Control</dt><dd id="control-state">unavailable</dd></div><div><dt>Activity</dt><dd id="activity-state">idle</dd></div><div><dt>Packet age</dt><dd id="packet-age">—</dd></div></dl><pre id="snapshot" class="snapshot" tabindex="0" aria-label="Current trainer snapshot JSON">{ "telemetry": null }</pre></article>
+        <article class="panel full-width"><div class="section-heading"><div><p class="eyebrow">CONTROL RESPONSES + MACHINE STATUS</p><h2>Packet history</h2></div><span class="history-note">Newest first · last 100 in export</span></div><p id="packet-empty">No control responses or machine-status packets yet.</p><ol id="packets" class="packet-log" aria-label="FTMS packet history"></ol></article>
+        <article class="panel full-width"><div class="section-heading"><div><p class="eyebrow">EVENTS, COMMANDS, AND ERRORS</p><h2>Session log</h2></div><div class="button-row"><button id="clear-log" class="button subtle">Clear logs</button><button id="download-log" class="button subtle">Download diagnostics ↓</button></div></div><ol id="log" class="log" aria-label="Session event log"></ol></article>
+      </section>
+      <footer><a href="./">← Back to your ride</a><span>LOCAL DIAGNOSTICS · NO CLOUD</span></footer>
+    </main>
+  </body>
+</html>
