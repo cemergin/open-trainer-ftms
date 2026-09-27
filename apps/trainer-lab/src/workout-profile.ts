@@ -26,7 +26,7 @@ export function profileFromWorkout(workout: Workout, id = "draft"): WorkoutProfi
   return validateWorkoutProfile({
     id,
     name: workout.name,
-    blocks: workout.steps.map((step) => ({ repeat: 1, steps: [{ ...step }] })),
+    blocks: [{ repeat: 1, steps: workout.steps.map((step) => ({ ...step })) }],
   });
 }
 

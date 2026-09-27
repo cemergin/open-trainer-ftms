@@ -56,6 +56,49 @@ describe("editable workout profiles", () => {
   });
 
   it.each([
+    { repeat: 1, stepCount: 101 },
+    { repeat: 20, stepCount: 25 },
+  ])("reopens expanded workouts for editing without losing steps: %j", ({ repeat, stepCount }) => {
+    const workout = workoutFromProfile({
+      ...intervalProfile,
+      blocks: [
+        {
+          repeat,
+          steps: Array.from({ length: stepCount }, (_, index) => ({
+            name: `Ramp ${index + 1}`,
+            seconds: 30,
+            watts: 100 + index,
+            endWatts: 150 + index,
+            cadenceRpm: 90,
+            effort: "steady",
+          })),
+        },
+      ],
+    });
+    const editable = profileFromWorkout(workout, "editable");
+    expect(editable.id).toBe("editable");
+    expect(editable.blocks).toHaveLength(1);
+    expect(editable.blocks[0]?.repeat).toBe(1);
+    expect(editable.blocks[0]?.steps).toHaveLength(repeat * stepCount);
+    expect(workoutFromProfile(editable)).toEqual(workout);
+    const first = editable.blocks[0]?.steps[0];
+    if (!first) throw new Error("Expected an editable step.");
+    first.watts = 50;
+    expect(workout.steps[0]?.watts).toBe(100);
+  });
+
+  it("still rejects workouts above the expanded step limit when reopening", () => {
+    const step = { name: "Steady", seconds: 1, watts: 100, effort: "steady" as const };
+    expect(() =>
+      profileFromWorkout({
+        name: "Oversized",
+        seconds: 501,
+        steps: Array.from({ length: 501 }, () => ({ ...step })),
+      }),
+    ).toThrow();
+  });
+
+  it.each([
     { ...intervalProfile, name: "" },
     { ...intervalProfile, blocks: [] },
     { ...intervalProfile, blocks: [{ repeat: 21, steps: intervalProfile.blocks[0]?.steps }] },
