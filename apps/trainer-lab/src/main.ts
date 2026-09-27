@@ -30,6 +30,7 @@ import { renderFeedback } from "./ui/feedback";
 import { mountWorkoutPicker } from "./ui/workout-picker";
 import { renderRideHistory } from "./ui/history";
 import { renderLiveChart } from "./ui/live-chart";
+import { mountWorkoutSpice } from "./ui/workout-spice";
 import { byId } from "./ui/dom";
 import "./style.css";
 import "./training.css";
@@ -67,6 +68,7 @@ let archivedRideId: string | undefined;
 let profileKey = "";
 const supportsBluetooth = bluetoothSupported();
 byId("browser-help").hidden = supportsBluetooth;
+const spice = mountWorkoutSpice(mode, render);
 const training = mountTrainingTools({
   run: act,
   runRide: (operation) =>
@@ -123,7 +125,11 @@ function selectedWorkout(): Workout {
     training.options.controlMode !== "erg" || ui.watts.value.trim() === ""
       ? automaticTarget()
       : ui.watts.valueAsNumber;
-  return createWorkout(mode(), Number(ui.duration.value), watts);
+  return spice.apply(
+    createWorkout(mode(), Number(ui.duration.value), watts),
+    mode(),
+    training.options.controlMode ?? "erg",
+  );
 }
 function previewWorkout(): Workout {
   try {
@@ -136,11 +142,14 @@ function previewWorkout(): Workout {
 function showRecoveredWorkout(): void {
   const workout = ride?.workout;
   if (!workout) return;
+  spice.restore(workout);
   const sources = ride?.record().sourceChanges?.at(-1)?.sources;
   if (sources)
     for (const metric of ["power", "cadence", "heartRate"] as const)
       training.sensors.selectSource(metric, sources[metric].source);
-  const selected = WORKOUT_OPTIONS.find((option) => option.name === workout.name);
+  const selected = WORKOUT_OPTIONS.find((option) =>
+    workout.spice ? option.id === workout.spice.mode : option.name === workout.name,
+  );
   if (selected) {
     const input = ui.options.querySelector<HTMLInputElement>(`input[value="${selected.id}"]`);
     if (input) input.checked = true;
@@ -399,6 +408,7 @@ function render(): void {
   byId("power-setting").hidden = controlMode !== "erg";
   byId("target-help").hidden = controlMode !== "erg";
   ui.duration.disabled = status !== "ready" || mode() === "free";
+  spice.update(workout, mode(), controlMode, status !== "ready", Boolean(training.customWorkout));
   text("action-hint", actionHint(status, active, connected));
   text(
     "workout-duration",
@@ -461,18 +471,28 @@ function renderProfile(
   if (key !== profileKey) {
     profileKey = key;
     ui.profile.replaceChildren();
-    const powers = workout.steps.map((step) =>
-      trainerWatts(step.watts + adjustment, trainer?.capabilities.current?.powerRange),
+    const powers = workout.steps.map((step) => ({
+      start: trainerWatts(step.watts + adjustment, trainer?.capabilities.current?.powerRange),
+      end: trainerWatts(
+        (step.endWatts ?? step.watts) + adjustment,
+        trainer?.capabilities.current?.powerRange,
+      ),
+    }));
+    const labels = powers.map(({ start, end }) =>
+      start === end ? `${start} W` : `${start} → ${end} W`,
     );
-    const max = Math.max(100, ...powers);
+    const max = Math.max(100, ...powers.flatMap(({ start, end }) => [start, end]));
     workout.steps.forEach((step, i) => {
       const bar = document.createElement("div");
       bar.className = `profile-block ${step.effort}`;
       bar.style.flex = String(Number.isFinite(step.seconds) ? step.seconds : 1);
       const power = powers[i];
       if (power === undefined) throw new Error("Missing workout power.");
-      bar.style.height = `${erg ? Math.max(12, (power / max) * 100) : 70}%`;
-      bar.title = `${step.name}${erg ? `: ${powers[i]} W` : ""}${Number.isFinite(step.seconds) ? ` · ${formatTime(step.seconds)}` : ""}`;
+      const peak = Math.max(power.start, power.end);
+      bar.style.height = `${erg ? Math.max(12, (peak / max) * 100) : 70}%`;
+      if (erg && power.start !== power.end)
+        bar.style.clipPath = `polygon(0 ${100 - (100 * power.start) / peak}%, 100% ${100 - (100 * power.end) / peak}%, 100% 100%, 0 100%)`;
+      bar.title = `${step.name}${erg ? `: ${labels[i]}` : ""}${Number.isFinite(step.seconds) ? ` · ${formatTime(step.seconds)}` : ""}`;
       ui.profile.append(bar);
     });
     const marker = document.createElement("span");
@@ -481,10 +501,7 @@ function renderProfile(
     ui.profile.setAttribute(
       "aria-label",
       workout.steps
-        .map(
-          (step, i) =>
-            `${step.name}${erg ? `, ${powers[i]} watts` : `, ${formatTime(step.seconds)}`}`,
-        )
+        .map((step, i) => `${step.name}${erg ? `, ${labels[i]}` : `, ${formatTime(step.seconds)}`}`)
         .join("; "),
     );
   }

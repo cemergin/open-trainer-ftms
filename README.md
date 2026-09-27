@@ -33,6 +33,8 @@ Choose **Steady ride**, **Five efforts**, **Recovery spin**, **Tempo cruise**, *
 
 The presets use general warm-up, main-effort, and cool-down patterns rather than personalized training prescriptions.
 
+Turn on **Spice things up** for a timed ERG preset to vary its hills, ramps, peaks, and recoveries. **Shuffle** chooses the next repeatable mix; each preset remembers its mix while the page is open. The duration, warm-up, and cool-down stay intact, and recovery rides remain gentle. Preview the profile before starting: the chosen mix stays fixed during the ride and is saved with its recovery checkpoint. Use **Edit workout** to save a mix as a favorite. Free rides, terrain/resistance modes, and custom workouts do not apply Spice.
+
 Start pedaling and press **Start ride**. With no ride history, the default is a 30-minute steady ride with a 60 W warm-up, 100 W middle, and 50 W cool-down. You can adjust power during the ride. Targets follow the trainer's supported range and increment, with an app ceiling of 600 W.
 
 - **Pause ride / Resume ride** excludes breaks from workout time.

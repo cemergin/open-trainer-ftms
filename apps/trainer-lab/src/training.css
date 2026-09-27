@@ -3,6 +3,53 @@
   gap: var(--space-4);
   margin-block: var(--space-6);
 }
+.spice-setting {
+  margin-block: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-inset);
+  transition: border-color var(--motion-standard);
+}
+.spice-setting[data-active="true"] {
+  border-color: var(--color-border-selected);
+  background: var(--color-success-surface);
+}
+.spice-heading,
+.spice-heading label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.spice-heading {
+  justify-content: space-between;
+}
+.spice-heading label {
+  min-height: var(--control-height);
+  cursor: pointer;
+  font-weight: var(--weight-semibold);
+}
+.spice-heading input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-accent);
+}
+#spice-index {
+  color: var(--color-accent);
+  font: var(--text-caption) var(--font-mono);
+  white-space: nowrap;
+}
+#spice-help {
+  margin-block: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  line-height: 1.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spice-setting {
+    transition: none;
+  }
+}
 .auto-pause-notice {
   display: flex;
   align-items: center;

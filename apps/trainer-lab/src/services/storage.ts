@@ -1,5 +1,5 @@
 import type { RideRecord, RideSample } from "../ride";
-import type { Workout, WorkoutStep } from "../workout";
+import { WORKOUT_OPTIONS, type Workout, type WorkoutStep } from "../workout";
 
 const KEY = "open-trainer:rides:v2";
 export const BACKUP_BYTE_LIMIT = 20_000_000;
@@ -262,7 +262,24 @@ function decodeWorkout(value: unknown): Workout | null {
     Math.abs(steps.reduce((total, step) => total + step.seconds, 0) - value.seconds) > 0.001
   )
     return null;
-  return { name: value.name, seconds: value.seconds, steps };
+  const spice = value.spice === undefined ? undefined : decodeSpice(value.spice);
+  if (spice === null || (spice && value.seconds === null)) return null;
+  return { name: value.name, seconds: value.seconds, steps, ...(spice ? { spice } : {}) };
+}
+
+function decodeSpice(value: unknown): Workout["spice"] | null {
+  if (!object(value)) return null;
+  const mode = WORKOUT_OPTIONS.find((option) => option.id === value.mode)?.id;
+  if (
+    !mode ||
+    mode === "free" ||
+    !finite(value.variation) ||
+    !Number.isInteger(value.variation) ||
+    value.variation < 1 ||
+    value.variation > 9999
+  )
+    return null;
+  return { mode, variation: value.variation };
 }
 
 function validRecord(value: unknown): value is RideRecord {

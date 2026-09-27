@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RideRecord } from "../src/ride";
 import { createWorkout } from "../src/workout";
+import { spiceWorkout } from "../src/workout-spice";
 import {
   clearCheckpoint,
   exportAllData,
@@ -165,6 +166,38 @@ describe("saved ride history", () => {
 });
 
 describe("ride recovery checkpoints", () => {
+  it("keeps the exact Spice mix and ramps in recovery and backups", () => {
+    const workout = spiceWorkout(createWorkout("hills", 20, 120), "hills", 42);
+    const spiced = { ...checkpoint, workout, record: { ...record, name: workout.name } };
+    expect(saveCheckpoint(spiced)).toBe(true);
+    expect(loadCheckpoint()).toEqual(spiced);
+    expect(JSON.parse(exportAllData()).checkpoint.workout).toEqual(workout);
+  });
+
+  it.each([
+    null,
+    { mode: "free", variation: 1 },
+    { mode: "unknown", variation: 1 },
+    { mode: "hills", variation: 0 },
+    { mode: "hills", variation: 10000 },
+    { mode: "hills", variation: 1.5 },
+    { mode: "hills", variation: "2" },
+  ])("rejects invalid Spice metadata without losing ride history: %j", (spice) => {
+    stored.set(
+      KEY,
+      JSON.stringify({
+        version: 2,
+        rides: [record],
+        checkpoint: {
+          ...checkpoint,
+          workout: { ...checkpoint.workout, spice },
+        },
+      }),
+    );
+    expect(loadCheckpoint()).toBeNull();
+    expect(loadRide()).toEqual(record);
+  });
+
   it("atomically checkpoints progress and history without duplicate rides", () => {
     expect(saveCheckpoint(checkpoint)).toBe(true);
     expect(setItem).toHaveBeenCalledTimes(1);

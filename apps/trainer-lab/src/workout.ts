@@ -64,6 +64,7 @@ export interface Workout {
   name: string;
   steps: WorkoutStep[];
   seconds: number | null;
+  spice?: { mode: Exclude<WorkoutMode, "free">; variation: number };
 }
 
 type ProfileStep = readonly [name: string, factor: number, effort: WorkoutStep["effort"]];
