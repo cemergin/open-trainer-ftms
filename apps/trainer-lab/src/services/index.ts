@@ -3,11 +3,34 @@ import { createMockTrainer } from "@open-trainer/ftms/testing";
 import { createWebBluetoothTrainer } from "@open-trainer/ftms/web-bluetooth";
 import type { Trainer } from "@open-trainer/ftms";
 
-export type { Trainer, TrainerCapabilities, TrainerTelemetry, Unsubscribe, ValueRange } from "@open-trainer/ftms";
-export { loadRide, saveRide, rideCsv, listRides, loadCheckpoint, saveCheckpoint, clearCheckpoint, exportAllData, RIDE_HISTORY_LIMIT, type RideCheckpoint } from "../storage";
+export { FtmsCommandSupersededError } from "@open-trainer/ftms";
+export type {
+  Trainer,
+  TrainerCapabilities,
+  TrainerTelemetry,
+  Unsubscribe,
+  ValueRange,
+} from "@open-trainer/ftms";
+export {
+  loadRide,
+  saveRide,
+  rideCsv,
+  listRides,
+  loadCheckpoint,
+  saveCheckpoint,
+  clearCheckpoint,
+  exportAllData,
+  RIDE_HISTORY_LIMIT,
+  type RideCheckpoint,
+} from "../storage";
 
-export function createTrainerConnection(simulator: boolean): Trainer {
-  return simulator ? createMockTrainer() : createWebBluetoothTrainer();
+export function createTrainerConnection(
+  simulator: boolean,
+  resistanceControlFormat: "sint16" | "uint8" = "sint16",
+): Trainer {
+  return simulator
+    ? createMockTrainer({ resistanceControlFormat }, { resistanceControlFormat })
+    : createWebBluetoothTrainer({}, { resistanceControlFormat });
 }
 
 export function bluetoothSupported(): boolean {
@@ -28,15 +51,25 @@ export async function keepScreenAwake(active: boolean): Promise<void> {
     }
     return;
   }
-  if (!navigator.wakeLock || wakeLock || wakeRequestPending || document.visibilityState !== "visible") return;
+  const browser: Partial<Navigator> = navigator;
+  if (!browser.wakeLock || wakeLock || wakeRequestPending || document.visibilityState !== "visible")
+    return;
   wakeRequestPending = true;
   try {
-    const lock = await navigator.wakeLock.request("screen");
-    if (!shouldStayAwake) { await lock.release(); return; }
+    const lock = await browser.wakeLock.request("screen");
+    if (!shouldStayAwake) {
+      await lock.release();
+      return;
+    }
     wakeLock = lock;
-    lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = undefined; });
-  } catch { /* Wake lock is optional; local riding and controls remain available. */ }
-  finally { wakeRequestPending = false; }
+    lock.addEventListener("release", () => {
+      if (wakeLock === lock) wakeLock = undefined;
+    });
+  } catch {
+    /* Wake lock is optional; local riding and controls remain available. */
+  } finally {
+    wakeRequestPending = false;
+  }
 }
 
 /** Download stays at the browser-service boundary so views do not manage object URLs. */
@@ -52,8 +85,9 @@ export function downloadText(content: string, filename: string, mime: string): v
 }
 
 export async function copyText(content: string): Promise<void> {
-  if (!navigator.clipboard) throw new Error("Clipboard is unavailable. Use Download instead.");
-  await navigator.clipboard.writeText(content);
+  const browser: Partial<Navigator> = navigator;
+  if (!browser.clipboard) throw new Error("Clipboard is unavailable. Use Download instead.");
+  await browser.clipboard.writeText(content);
 }
 
 export { loadQualificationDraft, saveQualificationDraft } from "./qualification-storage.js";
@@ -95,4 +129,3 @@ export function qualificationClient(): {
     secureContext: window.isSecureContext,
   };
 }
-

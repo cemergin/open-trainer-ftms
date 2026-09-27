@@ -33,11 +33,11 @@ Commands flowing in are asynchronous and serialized:
 
 1. The browser transport serializes GATT reads, writes, and notification setup.
 2. The FTMS Control Point queue permits one request/indication procedure at a time.
-3. A future setpoint scheduler will rate-limit and coalesce high-frequency game targets.
+3. A timed-out opcode is quarantined until its late indication is discarded, preventing a stale response from completing a later command.
+4. Queued setpoints coalesce, while pause, stop, and reset overtake and cancel queued targets.
+5. A future application scheduler may rate-limit setpoints before they reach the library.
 
 Connection, control ownership, and trainer activity are separate states. A trainer can therefore remain connected after control is revoked or remain controlled while paused.
-
-Machine Status `0xFF` revokes control; `0x13` reports a wheel circumference change and leaves ownership intact. These values follow [Bluetooth SIG FTMS v1.0, §4.17, Table 4.26 (page 68)](https://www.bluetooth.org/DocMan/handlers/DownloadDoc.ashx?doc_id=423422#page=68). Regression tests distinguish the two notifications and preserve their raw packet events.
 
 ## TDD layers
 
@@ -50,23 +50,22 @@ Machine Status `0xFF` revokes control; `0x13` reports a wheel circumference chan
 - FTMS request/response ordering tests with delayed simulated indications.
 - Trainer connection, control, activity, telemetry, and failure tests.
 - Package entry-point and publishing-metadata contract tests.
-- Workout profiles, command/End races, cadence and sleep pauses, recovery, exact measured-duration preservation, and power-feedback tests.
-- Ride history/checkpoint validation, CSV/JSON export, service boundaries, and diagnostic-control tests.
+- Stable error-code, malformed-packet, timeout-quarantine, and connection-race tests.
+- Web Bluetooth tests with a fake GATT stack covering picker, connection, notification, cleanup, and failure behavior.
+- Typed Machine Status and FTMS 1.0/1.0.1 resistance-encoding tests.
+- Enforced coverage thresholds, clean tarball installation, and runtime import smoke tests.
 
 ### Next without physical hardware
 
 1. Add a service-qualified GATT address type so FTMS and Cycling Power Service can coexist.
-2. Define setpoint coalescing outcomes before implementation: applied, superseded, rejected, and timed out.
-3. Add stop-priority tests while preserving the one-in-flight FTMS rule.
-4. Parse Machine Status into typed control-revocation and target-change events.
-5. Add stable error codes and test them; human-readable messages will not be API contracts.
-6. Add reconnect tests covering permission reuse, queue cleanup, and stale-state reset.
-7. Add packet-capture replay fixtures with identifying device data removed.
-8. Add consumer compilation fixtures for TypeScript `bundler` and `nodenext` resolution.
+2. Define application-level setpoint scheduling outcomes beyond the library's `command_superseded`, rejection, and timeout errors.
+3. Parse typed payloads for target-change Machine Status events; unknown payloads are already preserved.
+4. Add packet-capture replay fixtures with identifying device data removed.
+5. Add deterministic property/fuzz tests for flag combinations and truncated packets.
 
 ### Requires hardware
 
-The rider uses a Wahoo KICKR CORE. Physical validation is still pending; simulator success does not establish a device's response. Run the same contract suite or recorded-session procedure against:
+Run the same contract suite or recorded-session procedure against:
 
 1. Wahoo KICKR CORE on current firmware.
 2. A second FTMS brand such as Tacx or Elite.
@@ -74,9 +73,10 @@ The rider uses a Wahoo KICKR CORE. Physical validation is still pending; simulat
 
 For each device record feature flags, characteristic availability, notification rate, command responses, disconnect behavior, ERG response, resistance behavior, and simulation behavior. Hardware observations become fixtures and compatibility profiles; model-name conditionals do not enter the core casually.
 
-## Packaging work remaining
+## Release work remaining
 
-- Publish through npm trusted publishing with provenance once the package name and release workflow are finalized.
+- Qualify the Wahoo KICKR CORE and commit the required sanitized evidence.
+- Create or confirm the npm scope and configure trusted publishing for the protected `npm` environment.
 - Validate the first registry-published version from a fresh browser application in addition to the installed-tarball Node smoke test.
 - Keep the version below `1.0.0` until the public API survives real sessions on at least two trainer families.
 
@@ -88,8 +88,8 @@ The desktop ride application imports trainer factories, shared trainer types, pe
 
 `storage.ts`, exposed through the service boundary, uses browser local storage for the last 30 rides and one unfinished-ride checkpoint. Checkpoints include the workout, ride record, power adjustment, and save timestamp. The app saves every five seconds of recorded riding and on lifecycle/page-exit events, then offers explicit reconnect and Resume after returning. Completed or explicitly ended rides enter history; the rider can also archive an unfinished recovery as a partial ride. Per-ride CSV and a JSON data backup are downloadable. There are no cookies, accounts, cloud sync, or server-side persistence. Storage is scoped to the browser's site origin.
 
-The rebuilt Lab uses the same FTMS API and UI system. It displays detailed telemetry, freshness, recent power/cadence, capabilities, supported ranges, control responses, and machine-status packets. `lab-diagnostics.ts` owns diagnostic command sequencing and the simulator-only 80 W sequence. Snapshots and session logs can be exported; reconnect and control errors remain visible rather than being inferred as successful hardware actions.
+The rebuilt Lab uses the same FTMS API and UI system. It displays detailed telemetry, freshness, recent power/cadence, capabilities, supported ranges, control responses, and machine-status packets. `lab-diagnostics.ts` owns diagnostic command sequencing and the simulator-only 80 W sequence. The reusable qualification panel records physical-only counters and saves draft notes through the service entry point. Changes of device, client metadata, or resistance encoding clear previous pass marks and counts; changed runtimes discard old draft observations. The panel exports a source/build/dependency-fingerprinted hardware report only after all checks pass. Snapshots expose the package version, commit, and fingerprint, and session logs can be exported; reconnect and control errors remain visible rather than being inferred as successful hardware actions.
 
 UI tokens, native component styles, and layout styles are separate layers. See [DESIGN.md](./DESIGN.md) for their contracts. Desktop is the present product target, with mobile-specific work deferred. The app uses no frontend framework or backend. The static build supports GitHub Pages hosting over HTTPS; see [GITHUB_PAGES.md](./GITHUB_PAGES.md) for publication and hosted verification.
 
-The latest local validation passed 114 tests (92 app and 22 library), type checking, production build, and package verification. Final Codeflow assessment found no material cleanup candidates; missing analyzer artifacts are recorded privately as unavailable rather than replaced by estimated scores.
+Run `npm run verify` for the combined library/app checks. Coverage produces native JSON for Codeflow; unsupported analyzer input is reported as unavailable rather than converted to an estimated score.

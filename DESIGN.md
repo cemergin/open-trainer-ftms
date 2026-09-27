@@ -13,21 +13,21 @@ Desktop is the current design priority. Mobile-specific polish and phone trainer
 
 ## Component contracts
 
-| Component | HTML contract | States |
-| --- | --- | --- |
-| Action | A native `button.button` with `.primary`, `.subtle`, or `.stop-button` | Native `disabled`, `:focus-visible`, hover, press |
-| Compact control | A native `button.square-button` or `button.icon-button` with an accessible label | Native disabled and focus states; fixed size prevents shrinking |
-| Text action | A native `button.text-button` | Underlined text remains identifiable without color |
-| Metric | `.metric-label`, a numeric `strong`, and `.unit` or `small`; place in `.power-metric`, `.target-metric`, or `.secondary-metrics` | Tabular numerals prevent distracting movement; target uses accent color |
-| Workout choice | `label.workout-option` contains a native radio, descriptive text, and decorative `.radio-mark` | `:has(input:checked)`, focus-visible, and disabled derive from the real input |
-| Form field | A labeled native `select`, or `.watts-input` containing a number input and its unit | Keep native constraints and validation; labels must reference input IDs |
-| Notice | `.notice`; add `.error-notice` for an error | Use `role="alert"` for actionable errors and native `hidden` when absent |
-| Ride status | `.state-pill` with text; add `.live` only during an active riding state | The live pulse stops when `.live` is removed; text remains the source of meaning |
-| Connection | `.connection-dot`, optionally `.connected`, next to connection text | Dot is supplemental; always describe connection in text |
-| Simulator | `.demo-badge` next to the connection controls | Explicit text identifies simulated data independently of color |
-| Power guidance | `.ride-feedback` combines a text label, target range, gauge, trainer-speed readout, and decorative road | `data-band` is `waiting`, `below`, `pocket`, or `above`; stale/missing data hides the needle and never implies on-target effort |
-| Recovery | `.recovery-card` explains the saved workout/time and exposes reconnect/recovery or archive actions | Restored rides stay paused until explicit Resume; never imply automatic trainer control |
-| Ride history | `.history-row` shows ride identity, metrics, and a CSV action | Last 30 rides; label simulator and partial records; offer a separate JSON backup export |
+| Component       | HTML contract                                                                                                                    | States                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Action          | A native `button.button` with `.primary`, `.subtle`, or `.stop-button`                                                           | Native `disabled`, `:focus-visible`, hover, press                                                                               |
+| Compact control | A native `button.square-button` or `button.icon-button` with an accessible label                                                 | Native disabled and focus states; fixed size prevents shrinking                                                                 |
+| Text action     | A native `button.text-button`                                                                                                    | Underlined text remains identifiable without color                                                                              |
+| Metric          | `.metric-label`, a numeric `strong`, and `.unit` or `small`; place in `.power-metric`, `.target-metric`, or `.secondary-metrics` | Tabular numerals prevent distracting movement; target uses accent color                                                         |
+| Workout choice  | `label.workout-option` contains a native radio, descriptive text, and decorative `.radio-mark`                                   | `:has(input:checked)`, focus-visible, and disabled derive from the real input                                                   |
+| Form field      | A labeled native `select`, or `.watts-input` containing a number input and its unit                                              | Keep native constraints and validation; labels must reference input IDs                                                         |
+| Notice          | `.notice`; add `.error-notice` for an error                                                                                      | Use `role="alert"` for actionable errors and native `hidden` when absent                                                        |
+| Ride status     | `.state-pill` with text; add `.live` only during an active riding state                                                          | The live pulse stops when `.live` is removed; text remains the source of meaning                                                |
+| Connection      | `.connection-dot`, optionally `.connected`, next to connection text                                                              | Dot is supplemental; always describe connection in text                                                                         |
+| Simulator       | `.demo-badge` next to the connection controls                                                                                    | Explicit text identifies simulated data independently of color                                                                  |
+| Power guidance  | `.ride-feedback` combines a text label, target range, gauge, trainer-speed readout, and decorative road                          | `data-band` is `waiting`, `below`, `pocket`, or `above`; stale/missing data hides the needle and never implies on-target effort |
+| Recovery        | `.recovery-card` explains the saved workout/time and exposes reconnect/recovery or archive actions                               | Restored rides stay paused until explicit Resume; never imply automatic trainer control                                         |
+| Ride history    | `.history-row` shows ride identity, metrics, and a CSV action                                                                    | Last 30 rides; label simulator and partial records; offer a separate JSON backup export                                         |
 
 ## Setup and saved data
 

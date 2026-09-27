@@ -3,19 +3,37 @@ import { createMockTrainer, MockFtmsTransport } from "@open-trainer/ftms/testing
 import { createTrainer } from "@open-trainer/ftms/transport";
 import type { Trainer, TrainerTelemetry } from "@open-trainer/ftms";
 import { Ride, type RideRecord } from "../src/ride";
-import { createWorkout, currentStep, suggestedTarget, trainerWatts, WORKOUT_OPTIONS } from "../src/workout";
+import {
+  createWorkout,
+  currentStep,
+  suggestedTarget,
+  trainerWatts,
+  WORKOUT_OPTIONS,
+} from "../src/workout";
 
 let trainers: Trainer[];
-beforeEach(() => { trainers = []; vi.useFakeTimers(); });
-afterEach(async () => { for (const trainer of trainers) await trainer.disconnect(); vi.useRealTimers(); });
-async function setup(delay = 0) {
+beforeEach(() => {
+  trainers = [];
+  vi.useFakeTimers();
+});
+afterEach(async () => {
+  for (const trainer of trainers) await trainer.disconnect();
+  vi.useRealTimers();
+});
+async function setup(delay = 0): Promise<{
+  trainer: Trainer;
+  transport: MockFtmsTransport;
+  ride: Ride;
+  tick: (seconds: number, telemetry?: Partial<TrainerTelemetry>) => Promise<void>;
+  setClock: (ms: number) => void;
+}> {
   const transport = new MockFtmsTransport({ controlResponseDelayMs: delay });
   const trainer = createTrainer(transport, { commandTimeoutMs: 500 });
   trainers.push(trainer);
   await trainer.connect();
   let clock = 0;
   const ride = new Ride(trainer, true, () => clock);
-  const tick = async (seconds: number, telemetry?: Partial<TrainerTelemetry>) => {
+  const tick = async (seconds: number, telemetry?: Partial<TrainerTelemetry>): Promise<void> => {
     clock += seconds * 1000;
     await vi.advanceTimersByTimeAsync(250);
     if (trainer.telemetry.current) Object.assign(trainer.telemetry.current, telemetry);
@@ -23,13 +41,25 @@ async function setup(delay = 0) {
     await vi.advanceTimersByTimeAsync(delay * 5);
     await pending;
   };
-  return { trainer, transport, ride, tick, setClock: (ms: number) => { clock = ms; } };
+  return {
+    trainer,
+    transport,
+    ride,
+    tick,
+    setClock: (ms: number) => {
+      clock = ms;
+    },
+  };
 }
-const shortWorkout = { name: "Test ride", seconds: 6, steps: [
-  { name: "Warm up", seconds: 2, watts: 60, effort: "easy" as const },
-  { name: "Steady", seconds: 2, watts: 120, effort: "steady" as const },
-  { name: "Cool down", seconds: 2, watts: 50, effort: "easy" as const },
-] };
+const shortWorkout = {
+  name: "Test ride",
+  seconds: 6,
+  steps: [
+    { name: "Warm up", seconds: 2, watts: 60, effort: "easy" as const },
+    { name: "Steady", seconds: 2, watts: 120, effort: "steady" as const },
+    { name: "Cool down", seconds: 2, watts: 50, effort: "easy" as const },
+  ],
+};
 
 describe("workout plans", () => {
   it("adds up to the chosen duration, including all five efforts", () => {
@@ -41,7 +71,9 @@ describe("workout plans", () => {
         expect(currentStep(workout, minutes * 60).step.name).toBe("Cool down");
       }
     }
-    expect(createWorkout("intervals", 30, 100).steps.filter(step => step.effort === "hard")).toHaveLength(5);
+    expect(
+      createWorkout("intervals", 30, 100).steps.filter((step) => step.effort === "hard"),
+    ).toHaveLength(5);
     expect(createWorkout("free", 30, 100).seconds).toBeNull();
   });
   it("uses the next interval exactly at its boundary", () => {
@@ -50,19 +82,29 @@ describe("workout plans", () => {
   });
   it("provides distinct, complete ERG profiles for all timed presets", () => {
     const profiles = new Set<string>();
-    for (const option of WORKOUT_OPTIONS.filter(option => option.id !== "free")) {
+    for (const option of WORKOUT_OPTIONS.filter((option) => option.id !== "free")) {
       for (const minutes of [10, 30, 120]) {
         const workout = createWorkout(option.id, minutes, 100);
         expect(workout.name).toBe(option.name);
-        expect(workout.steps.reduce((total, step) => total + step.seconds, 0)).toBeCloseTo(minutes * 60);
-        expect(workout.steps.every(step => step.seconds > 0 && step.watts > 0)).toBe(true);
+        expect(workout.steps.reduce((total, step) => total + step.seconds, 0)).toBeCloseTo(
+          minutes * 60,
+        );
+        expect(workout.steps.every((step) => step.seconds > 0 && step.watts > 0)).toBe(true);
       }
-      profiles.add(createWorkout(option.id, 30, 100).steps.map(step => step.watts).join(","));
+      profiles.add(
+        createWorkout(option.id, 30, 100)
+          .steps.map((step) => step.watts)
+          .join(","),
+      );
     }
     expect(profiles.size).toBe(6);
     const mountain = createWorkout("mountain", 30, 100).steps;
-    expect(mountain.find(step => step.name === "The summit")?.watts).toBe(Math.max(...mountain.map(step => step.watts)));
-    expect(WORKOUT_OPTIONS.find(option => option.id === "hills")?.description).toContain("ERG power profile");
+    expect(mountain.find((step) => step.name === "The summit")?.watts).toBe(
+      Math.max(...mountain.map((step) => step.watts)),
+    );
+    expect(WORKOUT_OPTIONS.find((option) => option.id === "hills")?.description).toContain(
+      "ERG power profile",
+    );
   });
   it("suggests transparent defaults and only lowers them from previous average power", () => {
     expect(suggestedTarget("recovery")).toBe(75);
@@ -89,9 +131,18 @@ describe("workout plans", () => {
 
 function checkpoint(overrides: Partial<RideRecord> = {}): RideRecord {
   return {
-    version: 1, startedAt: "2026-09-27T10:00:00.000Z", name: shortWorkout.name, simulator: true,
-    seconds: 2, distanceKm: 0.02, averagePower: 100, workKj: 0.2, measuredSeconds: 2, completed: false,
-    samples: [{ seconds: 2, watts: 100, cadence: 80, speed: 36, target: 60 }], ...overrides,
+    version: 1,
+    startedAt: "2026-09-27T10:00:00.000Z",
+    name: shortWorkout.name,
+    simulator: true,
+    seconds: 2,
+    distanceKm: 0.02,
+    averagePower: 100,
+    workKj: 0.2,
+    measuredSeconds: 2,
+    completed: false,
+    samples: [{ seconds: 2, watts: 100, cadence: 80, speed: 36, target: 60 }],
+    ...overrides,
   };
 }
 
@@ -121,7 +172,10 @@ describe("ride recovery", () => {
   });
   it("preserves exactly measured duration when the ride had missing telemetry", async () => {
     const { ride, tick } = await setup();
-    ride.restore(shortWorkout, checkpoint({ seconds: 3, workKj: 0.201, averagePower: 101, measuredSeconds: 2 }));
+    ride.restore(
+      shortWorkout,
+      checkpoint({ seconds: 3, workKj: 0.201, averagePower: 101, measuredSeconds: 2 }),
+    );
     expect(ride.averagePower).toBe(101);
     await ride.resume();
     await tick(1, { instantaneousPowerWatts: 100 });
@@ -134,17 +188,27 @@ describe("ride recovery", () => {
     expect(first.ride.averagePower).toBe(100);
     expect(first.ride.record().measuredSeconds).toBe(2);
     const second = await setup();
-    second.ride.restore(shortWorkout, checkpoint({ averagePower: 0, workKj: 0, measuredSeconds: undefined }));
+    second.ride.restore(
+      shortWorkout,
+      checkpoint({ averagePower: 0, workKj: 0, measuredSeconds: undefined }),
+    );
     expect(second.ride.averagePower).toBe(0);
   });
   it("rejects completed, overrun, incompatible and corrupted checkpoints without changing the ride", async () => {
     const { ride, transport } = await setup();
     const invalid: Partial<RideRecord>[] = [
-      { completed: true }, { seconds: 6 }, { seconds: -1 }, { simulator: false }, { startedAt: "bad-date" },
-      { workKj: NaN }, { measuredSeconds: 3 }, { measuredSeconds: 0 },
+      { completed: true },
+      { seconds: 6 },
+      { seconds: -1 },
+      { simulator: false },
+      { startedAt: "bad-date" },
+      { workKj: NaN },
+      { measuredSeconds: 3 },
+      { measuredSeconds: 0 },
       { samples: [{ seconds: 3, watts: 100, cadence: 80, speed: 36, target: 60 }] },
     ];
-    for (const override of invalid) expect(() => ride.restore(shortWorkout, checkpoint(override))).toThrow();
+    for (const override of invalid)
+      expect(() => ride.restore(shortWorkout, checkpoint(override))).toThrow();
     expect(() => ride.restore({ ...shortWorkout, steps: [] }, checkpoint())).toThrow();
     expect(() => ride.restore(shortWorkout, checkpoint(), NaN)).toThrow();
     expect(ride.status).toBe("ready");
@@ -175,7 +239,10 @@ describe("ride recovery", () => {
     const workout = createWorkout("free", 30, 100);
     ride.restore(workout, checkpoint({ name: workout.name }));
     await ride.resume();
-    for (let second = 1; second <= 7; second++) { setClock(second * 1000); await ride.tick(); }
+    for (let second = 1; second <= 7; second++) {
+      setClock(second * 1000);
+      await ride.tick();
+    }
     expect(ride.status).toBe("paused");
     expect(ride.error).toContain("No fresh trainer data");
   });
@@ -340,7 +407,10 @@ describe("ride lifecycle against the FTMS simulator", () => {
     const { ride, tick, setClock } = await setup();
     await ride.start(createWorkout("free", 30, 100));
     await tick(1);
-    for (let second = 2; second <= 8; second++) { setClock(second * 1000); await ride.tick(); }
+    for (let second = 2; second <= 8; second++) {
+      setClock(second * 1000);
+      await ride.tick();
+    }
     expect(ride.status).toBe("paused");
     expect(ride.telemetry).toBeNull();
     expect(ride.error).toContain("No fresh trainer data");
@@ -357,7 +427,9 @@ describe("ride lifecycle against the FTMS simulator", () => {
   });
   it("adjusts by at least one supported increment and reports only acknowledged targets", async () => {
     const { ride, trainer } = await setup();
-    trainer.capabilities.current!.powerRange = { minimum: 25, maximum: 248, increment: 10 };
+    const capabilities = trainer.capabilities.current;
+    if (!capabilities) throw new Error("Missing trainer capabilities.");
+    capabilities.powerRange = { minimum: 25, maximum: 248, increment: 10 };
     await ride.start(createWorkout("free", 30, 100));
     expect(ride.target).toBe(105);
     await ride.adjust(5);
@@ -425,7 +497,9 @@ describe("ride lifecycle against the FTMS simulator", () => {
     const trainer = createMockTrainer();
     trainers.push(trainer);
     await trainer.connect();
-    trainer.capabilities.current!.supportsPowerTarget = false;
+    const capabilities = trainer.capabilities.current;
+    if (!capabilities) throw new Error("Missing trainer capabilities.");
+    capabilities.supportsPowerTarget = false;
     const ride = new Ride(trainer, true);
     await ride.start(shortWorkout);
     expect(ride.status).toBe("ready");

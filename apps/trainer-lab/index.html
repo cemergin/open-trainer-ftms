@@ -4,81 +4,296 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#111414" />
-    <meta name="description" content="A simple, local cycling companion. Connect your smart trainer, choose a workout, and ride." />
+    <meta
+      name="description"
+      content="A simple, local cycling companion. Connect your smart trainer, choose a workout, and ride."
+    />
     <title>Open Trainer — Just ride.</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
     <div class="shell">
       <header class="masthead">
-        <a class="brand" href="./" aria-label="Open Trainer home"><span class="brand-mark" aria-hidden="true">↗</span> OPEN<span class="brand-light">TRAINER</span></a>
-        <div class="header-right"><span class="local-label">LOCAL. PRIVATE. YOUR RIDE.</span><button id="fullscreen" class="icon-button" aria-label="Toggle fullscreen" title="Toggle fullscreen">⛶</button></div>
+        <a class="brand" href="./" aria-label="Open Trainer home"
+          ><span class="brand-mark" aria-hidden="true">↗</span> OPEN<span class="brand-light"
+            >TRAINER</span
+          ></a
+        >
+        <div class="header-right">
+          <span class="local-label">LOCAL. PRIVATE. YOUR RIDE.</span
+          ><button
+            id="fullscreen"
+            class="icon-button"
+            aria-label="Toggle fullscreen"
+            title="Toggle fullscreen"
+          >
+            ⛶
+          </button>
+        </div>
       </header>
       <main>
         <section class="intro">
-          <div><p class="eyebrow"><span class="tiny-line"></span> YOUR DAILY RESET</p><h1>Less setup.<br /><span>More riding.</span></h1><p class="intro-copy">Your bike. Your effort. A little time for yourself.</p></div>
-          <div class="intro-side"><span class="large-outline" aria-hidden="true">↗</span><p>No account. No subscription.<br />Just connect and get moving.</p></div>
+          <div>
+            <p class="eyebrow"><span class="tiny-line"></span> YOUR DAILY RESET</p>
+            <h1>Less setup.<br /><span>More riding.</span></h1>
+            <p class="intro-copy">Your bike. Your effort. A little time for yourself.</p>
+          </div>
+          <div class="intro-side">
+            <span class="large-outline" aria-hidden="true">↗</span>
+            <p>No account. No subscription.<br />Just connect and get moving.</p>
+          </div>
         </section>
 
-        <section id="recovery" class="recovery-card" hidden aria-label="Saved ride recovery"><div><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h2>Your ride is still here.</h2><p id="recovery-detail"></p></div><div class="summary-actions"><button id="restore-ride" class="button primary">Connect to recover →</button><button id="archive-recovery" class="button subtle">Keep as past ride</button></div></section>
-        <section class="connection-bar" aria-label="Trainer connection">
-          <div class="connection-info"><span id="connection-dot" class="connection-dot"></span><div><strong id="device-name">Let’s find your trainer</strong><span id="connection-detail">Bluetooth FTMS · Chrome or Edge on your computer</span></div></div>
-          <div class="connection-actions"><span id="demo-badge" class="demo-badge" hidden>SIMULATOR · NO BIKE CONTROL</span><button id="connect-simulator" class="text-button">Try a demo</button><button id="connect-real" class="button primary">Connect trainer <span aria-hidden="true">↗</span></button><button id="disconnect" class="button subtle" hidden>Disconnect</button></div>
+        <section id="recovery" class="recovery-card" hidden aria-label="Saved ride recovery">
+          <div>
+            <p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p>
+            <h2>Your ride is still here.</h2>
+            <p id="recovery-detail"></p>
+          </div>
+          <div class="summary-actions">
+            <button id="restore-ride" class="button primary">Connect to recover →</button
+            ><button id="archive-recovery" class="button subtle">Keep as past ride</button>
+          </div>
         </section>
-        <p id="browser-help" class="notice" hidden>This browser can preview workouts. For Bluetooth, open this address in Chrome or Edge on your computer.</p>
+        <section class="connection-bar" aria-label="Trainer connection">
+          <div class="connection-info">
+            <span id="connection-dot" class="connection-dot"></span>
+            <div>
+              <strong id="device-name">Let’s find your trainer</strong
+              ><span id="connection-detail">Bluetooth FTMS · Chrome or Edge on your computer</span>
+            </div>
+          </div>
+          <div class="connection-actions">
+            <span id="demo-badge" class="demo-badge" hidden>SIMULATOR · NO BIKE CONTROL</span
+            ><button id="connect-simulator" class="text-button">Try a demo</button
+            ><button id="connect-real" class="button primary">
+              Connect trainer <span aria-hidden="true">↗</span></button
+            ><button id="disconnect" class="button subtle" hidden>Disconnect</button>
+          </div>
+        </section>
+        <p id="browser-help" class="notice" hidden>
+          This browser can preview workouts. For Bluetooth, open this address in Chrome or Edge on
+          your computer.
+        </p>
         <div id="message" class="notice error-notice" role="alert" hidden></div>
 
         <div class="ride-grid">
           <section class="ride-panel" aria-label="Ride dashboard">
-            <div class="panel-top"><p class="eyebrow" id="ride-label">READY WHEN YOU ARE</p><span id="ride-state" class="state-pill">STANDBY</span></div>
-            <div class="ride-heading"><h2 id="step-name">Find your rhythm.</h2><span id="step-count">A little progress, every day.</span></div>
+            <div class="panel-top">
+              <p class="eyebrow" id="ride-label">READY WHEN YOU ARE</p>
+              <span id="ride-state" class="state-pill">STANDBY</span>
+            </div>
+            <div class="ride-heading">
+              <h2 id="step-name">Find your rhythm.</h2>
+              <span id="step-count">A little progress, every day.</span>
+            </div>
             <div class="main-metrics">
-              <div class="power-metric"><span class="metric-label">YOUR POWER</span><div><strong id="power">—</strong><span class="unit">W</span></div><span id="power-caption" class="metric-caption">Live from your trainer</span></div>
-              <div class="target-metric"><span class="metric-label">TARGET POWER</span><div><strong id="target">60</strong><span class="unit">W</span></div><div class="target-controls"><button id="power-down" class="square-button" aria-label="Decrease target by 5 watts" disabled>−</button><span>5 W</span><button id="power-up" class="square-button" aria-label="Increase target by 5 watts" disabled>+</button></div></div>
+              <div class="power-metric">
+                <span class="metric-label">YOUR POWER</span>
+                <div><strong id="power">—</strong><span class="unit">W</span></div>
+                <span id="power-caption" class="metric-caption">Live from your trainer</span>
+              </div>
+              <div class="target-metric">
+                <span class="metric-label">TARGET POWER</span>
+                <div><strong id="target">60</strong><span class="unit">W</span></div>
+                <div class="target-controls">
+                  <button
+                    id="power-down"
+                    class="square-button"
+                    aria-label="Decrease target by 5 watts"
+                    disabled
+                  >
+                    −</button
+                  ><span>5 W</span
+                  ><button
+                    id="power-up"
+                    class="square-button"
+                    aria-label="Increase target by 5 watts"
+                    disabled
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
             <div id="ride-feedback" class="ride-feedback" data-band="waiting">
-              <div class="feedback-top"><div><span class="metric-label">POWER GUIDANCE</span><strong id="feedback-label">Ready for your rhythm</strong></div><div class="speed-readout"><span class="metric-label">TRAINER SPEED</span><strong id="live-speed">—</strong><small> km/h</small></div></div>
-              <div class="power-gauge" role="img" aria-label="Power relative to target: blue below, green on target, amber above"><span class="pocket-window"></span><span class="power-needle"></span></div>
-              <div class="gauge-labels"><span>BUILD</span><span id="pocket-range">55–65 W</span><span>EASE</span></div>
-              <div class="feedback-bottom"><p id="feedback-guidance">Ride to see how your power matches the target.</p><div class="ride-road" aria-hidden="true"><span class="rider">↗</span><span class="road-dashes"></span></div></div>
+              <div class="feedback-top">
+                <div>
+                  <span class="metric-label">POWER GUIDANCE</span
+                  ><strong id="feedback-label">Ready for your rhythm</strong>
+                </div>
+                <div class="speed-readout">
+                  <span class="metric-label">TRAINER SPEED</span><strong id="live-speed">—</strong
+                  ><small> km/h</small>
+                </div>
+              </div>
+              <div
+                class="power-gauge"
+                role="img"
+                aria-label="Power relative to target: blue below, green on target, amber above"
+              >
+                <span class="pocket-window"></span><span class="power-needle"></span>
+              </div>
+              <div class="gauge-labels">
+                <span>BUILD</span><span id="pocket-range">55–65 W</span><span>EASE</span>
+              </div>
+              <div class="feedback-bottom">
+                <p id="feedback-guidance">Ride to see how your power matches the target.</p>
+                <div class="ride-road" aria-hidden="true">
+                  <span class="rider">↗</span><span class="road-dashes"></span>
+                </div>
+              </div>
             </div>
             <div class="secondary-metrics">
-              <div><span class="metric-label">CADENCE</span><strong id="cadence">—</strong><small>rpm</small></div>
-              <div><span class="metric-label">RIDE TIME</span><strong id="elapsed">00:00</strong><small id="total-time">/ 30:00</small></div>
-              <div><span class="metric-label" id="remaining-label">INTERVAL LEFT</span><strong id="remaining">05:00</strong><small id="next-step">warm up</small></div>
+              <div>
+                <span class="metric-label">CADENCE</span><strong id="cadence">—</strong
+                ><small>rpm</small>
+              </div>
+              <div>
+                <span class="metric-label">RIDE TIME</span><strong id="elapsed">00:00</strong
+                ><small id="total-time">/ 30:00</small>
+              </div>
+              <div>
+                <span class="metric-label" id="remaining-label">INTERVAL LEFT</span
+                ><strong id="remaining">05:00</strong><small id="next-step">warm up</small>
+              </div>
             </div>
-            <div class="profile-heading"><span class="metric-label">THE ROAD AHEAD</span><span id="workout-duration">30 MIN · ERG WORKOUT</span></div>
-            <div id="workout-profile" class="workout-profile" role="img" aria-label="Workout power profile"></div>
+            <div class="profile-heading">
+              <span class="metric-label">THE ROAD AHEAD</span
+              ><span id="workout-duration">30 MIN · ERG WORKOUT</span>
+            </div>
+            <div
+              id="workout-profile"
+              class="workout-profile"
+              role="img"
+              aria-label="Workout power profile"
+            ></div>
             <div class="profile-axis"><span>START</span><span id="profile-end">30 MIN</span></div>
-            <div class="ride-actions"><button id="start" class="button primary start-button" disabled>Start ride <span aria-hidden="true">→</span></button><button id="pause" class="button subtle" hidden>Pause ride</button><button id="stop" class="button stop-button" hidden>■ End ride</button><span id="action-hint">Connect your trainer to begin.</span></div>
+            <div class="ride-actions">
+              <button id="start" class="button primary start-button" disabled>
+                Start ride <span aria-hidden="true">→</span></button
+              ><button id="pause" class="button subtle" hidden>Pause ride</button
+              ><button id="stop" class="button stop-button" hidden>■ End ride</button
+              ><span id="action-hint">Connect your trainer to begin.</span>
+            </div>
           </section>
 
           <aside class="setup-panel">
-            <div class="panel-top"><p class="eyebrow">MAKE IT YOURS</p><span class="section-number">01 / 03</span></div>
+            <div class="panel-top">
+              <p class="eyebrow">MAKE IT YOURS</p>
+              <span class="section-number">01 / 03</span>
+            </div>
             <h2>Today’s ride</h2>
-            <fieldset id="workout-options"><legend class="sr-only">Choose a workout</legend></fieldset>
-            <div class="settings-row"><label for="duration">DURATION</label><select id="duration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></div>
-            <div class="settings-row"><label for="base-power">STEADY TARGET <small>OPTIONAL</small></label><div class="watts-input"><input id="base-power" type="number" min="25" max="600" step="5" placeholder="Auto" aria-describedby="target-help" /><span>W</span></div></div>
-            <p id="target-help" class="setup-note">Leave it on Auto for a suggested starting power, or choose your own. You can adjust it during the ride.</p>
-            <div class="setup-footer"><span aria-hidden="true">↳</span><p id="setup-footer">Your first five minutes start gently at 60 W.</p></div>
+            <fieldset id="workout-options">
+              <legend class="sr-only">Choose a workout</legend>
+            </fieldset>
+            <div class="settings-row">
+              <label for="duration">DURATION</label
+              ><select id="duration">
+                <option value="15">15 minutes</option>
+                <option value="30" selected>30 minutes</option>
+                <option value="45">45 minutes</option>
+                <option value="60">60 minutes</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="base-power">STEADY TARGET <small>OPTIONAL</small></label>
+              <div class="watts-input">
+                <input
+                  id="base-power"
+                  type="number"
+                  min="25"
+                  max="600"
+                  step="5"
+                  placeholder="Auto"
+                  aria-describedby="target-help"
+                /><span>W</span>
+              </div>
+            </div>
+            <p id="target-help" class="setup-note">
+              Leave it on Auto for a suggested starting power, or choose your own. You can adjust it
+              during the ride.
+            </p>
+            <div class="setup-footer">
+              <span aria-hidden="true">↳</span>
+              <p id="setup-footer">Your first five minutes start gently at 60 W.</p>
+            </div>
           </aside>
         </div>
 
         <section class="ride-bottom" aria-label="Ride statistics">
-          <div><span class="metric-label">DISTANCE <span class="muted">/ EST.</span></span><strong id="distance">0.00 <small>km</small></strong></div>
-          <div><span class="metric-label">AVERAGE POWER</span><strong id="average">— <small>W</small></strong></div>
-          <div><span class="metric-label">WORK</span><strong id="work">0 <small>kJ</small></strong></div>
-          <div class="ride-tip"><span class="metric-label">A GOOD START</span><p>Close other trainer apps. Keep this tab open.<br />Pause before you stop pedaling.</p></div>
+          <div>
+            <span class="metric-label">DISTANCE <span class="muted">/ EST.</span></span
+            ><strong id="distance">0.00 <small>km</small></strong>
+          </div>
+          <div>
+            <span class="metric-label">AVERAGE POWER</span
+            ><strong id="average">— <small>W</small></strong>
+          </div>
+          <div>
+            <span class="metric-label">WORK</span><strong id="work">0 <small>kJ</small></strong>
+          </div>
+          <div class="ride-tip">
+            <span class="metric-label">A GOOD START</span>
+            <p>
+              Close other trainer apps. Keep this tab open.<br />Pause before you stop pedaling.
+            </p>
+          </div>
         </section>
 
         <section id="summary" class="summary" hidden aria-labelledby="summary-title">
-          <div><p class="eyebrow" id="summary-label">SAVED ON THIS DEVICE</p><h2 id="summary-title">A ride worth showing up for.</h2><p id="summary-detail"></p></div>
-          <div class="summary-actions"><button id="download" class="button subtle">Download ride CSV ↓</button><button id="new-ride" class="button primary" hidden>Another ride →</button></div>
+          <div>
+            <p class="eyebrow" id="summary-label">SAVED ON THIS DEVICE</p>
+            <h2 id="summary-title">A ride worth showing up for.</h2>
+            <p id="summary-detail"></p>
+          </div>
+          <div class="summary-actions">
+            <button id="download" class="button subtle">Download ride CSV ↓</button
+            ><button id="new-ride" class="button primary" hidden>Another ride →</button>
+          </div>
         </section>
-        <section class="history-panel" aria-labelledby="history-title"><div class="history-heading"><div><p class="eyebrow">YOUR TIME ON THE BIKE</p><h2 id="history-title">Past rides</h2></div><button id="export-data" class="button subtle">Export all data ↓</button></div><p class="history-note">Last 30 rides, saved in this browser. No account, cloud upload, or cookies. Browser data can be cleared by your browser; export a backup to keep it.</p><div id="ride-history" class="ride-history"></div></section>
-        <details class="help"><summary>First ride? Here’s the setup.</summary><ol><li>Power on your Bluetooth FTMS trainer and close Wahoo, Zwift, or any other app using it.</li><li>Use Chrome or Edge on your computer. Allow Bluetooth access when prompted and select your trainer.</li><li>Pick your ride and a comfortable power target. Start pedaling, then press Start ride.</li><li>Use Pause for a break, or End ride to stop and save. Escape also ends the ride.</li></ol><p>The app needs an ERG-capable FTMS trainer. If your trainer isn’t listed, check its firmware in the manufacturer’s app. Ride data stays in this browser. CSV export is a data file, not a Strava activity upload.</p></details>
+        <section class="history-panel" aria-labelledby="history-title">
+          <div class="history-heading">
+            <div>
+              <p class="eyebrow">YOUR TIME ON THE BIKE</p>
+              <h2 id="history-title">Past rides</h2>
+            </div>
+            <button id="export-data" class="button subtle">Export all data ↓</button>
+          </div>
+          <p class="history-note">
+            Last 30 rides, saved in this browser. No account, cloud upload, or cookies. Browser data
+            can be cleared by your browser; export a backup to keep it.
+          </p>
+          <div id="ride-history" class="ride-history"></div>
+        </section>
+        <details class="help">
+          <summary>First ride? Here’s the setup.</summary>
+          <ol>
+            <li>
+              Power on your Bluetooth FTMS trainer and close Wahoo, Zwift, or any other app using
+              it.
+            </li>
+            <li>
+              Use Chrome or Edge on your computer. Allow Bluetooth access when prompted and select
+              your trainer.
+            </li>
+            <li>
+              Pick your ride and a comfortable power target. Start pedaling, then press Start ride.
+            </li>
+            <li>Use Pause for a break, or End ride to stop and save. Escape also ends the ride.</li>
+          </ol>
+          <p>
+            The app needs an ERG-capable FTMS trainer. If your trainer isn’t listed, check its
+            firmware in the manufacturer’s app. Ride data stays in this browser. CSV export is a
+            data file, not a Strava activity upload.
+          </p>
+        </details>
       </main>
-      <footer><span>OPEN TRAINER <span class="muted">/ Built for the ride.</span></span><a id="lab-link" href="./lab.html">Trainer Lab ↗</a><span class="muted">NO CLOUD. JUST YOU.</span></footer>
+      <footer>
+        <span>OPEN TRAINER <span class="muted">/ Built for the ride.</span></span
+        ><a id="lab-link" href="./lab.html">Trainer Lab ↗</a
+        ><span class="muted">NO CLOUD. JUST YOU.</span>
+      </footer>
     </div>
   </body>
 </html>

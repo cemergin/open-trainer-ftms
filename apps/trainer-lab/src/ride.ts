@@ -1,7 +1,8 @@
 import type { Trainer, TrainerTelemetry, Unsubscribe } from "./services";
 import { currentStep, trainerWatts, type Workout } from "./workout";
 
-export type RideStatus = "ready" | "starting" | "riding" | "paused" | "stopping" | "finished" | "interrupted";
+export type RideStatus =
+  "ready" | "starting" | "riding" | "paused" | "stopping" | "finished" | "interrupted";
 export interface RideSample {
   seconds: number;
   watts: number | null;
@@ -43,36 +44,60 @@ export class Ride {
   #suspensionDetected = false;
   #epoch = 0;
   #pending: Promise<void> | undefined;
-  #subscriptions: Unsubscribe[];
+  readonly #subscriptions: Unsubscribe[];
 
-  constructor(readonly trainer: Trainer, readonly simulator: boolean, private readonly now = () => Date.now()) {
+  constructor(
+    readonly trainer: Trainer,
+    readonly simulator: boolean,
+    private readonly now = () => Date.now(),
+  ) {
     this.#subscriptions = [
-      trainer.telemetry.subscribe((value) => { if (value) this.#lastTelemetry = this.now(); }),
+      trainer.telemetry.subscribe((value) => {
+        if (value) this.#lastTelemetry = this.now();
+      }),
       trainer.connection.subscribe((state) => {
-        if (state !== "ready" && this.active) this.#interrupt("Trainer disconnected. Reconnect to begin a new ride. Resistance release could not be confirmed.");
+        if (state !== "ready" && this.active)
+          this.#interrupt(
+            "Trainer disconnected. Reconnect to begin a new ride. Resistance release could not be confirmed.",
+          );
       }),
       trainer.control.subscribe((state) => {
-        if (state === "revoked" && this.active) this.#interrupt("Trainer control was lost. Close other trainer apps and reconnect.");
+        if (state === "revoked" && this.active)
+          this.#interrupt("Trainer control was lost. Close other trainer apps and reconnect.");
       }),
     ];
   }
 
-  get busy(): boolean { return this.#pending !== undefined; }
-  get active(): boolean { return ["starting", "riding", "paused", "stopping"].includes(this.status); }
-  get averagePower(): number | null { return this.#measuredSeconds > 0 ? Math.round(this.workKj * 1000 / this.#measuredSeconds) : null; }
-  get telemetry(): TrainerTelemetry | null { return this.now() - this.#lastTelemetry <= 5000 ? this.trainer.telemetry.current : null; }
+  get busy(): boolean {
+    return this.#pending !== undefined;
+  }
+  get active(): boolean {
+    return ["starting", "riding", "paused", "stopping"].includes(this.status);
+  }
+  get averagePower(): number | null {
+    return this.#measuredSeconds > 0
+      ? Math.round((this.workKj * 1000) / this.#measuredSeconds)
+      : null;
+  }
+  get telemetry(): TrainerTelemetry | null {
+    return this.now() - this.#lastTelemetry <= 5000 ? this.trainer.telemetry.current : null;
+  }
 
   restore(workout: Workout, record: RideRecord, adjustment = 0): void {
-    if (this.status !== "ready" || this.busy) throw new Error("Only a new ride can restore a checkpoint.");
+    if (this.status !== "ready" || this.busy)
+      throw new Error("Only a new ride can restore a checkpoint.");
     const measuredSeconds = checkpointMeasuredSeconds(workout, record, this.simulator, adjustment);
-    const target = trainerWatts(currentStep(workout, record.seconds).step.watts + adjustment, this.trainer.capabilities.current?.powerRange);
+    const target = trainerWatts(
+      currentStep(workout, record.seconds).step.watts + adjustment,
+      this.trainer.capabilities.current?.powerRange,
+    );
     this.workout = workout;
     this.startedAt = record.startedAt;
     this.elapsed = record.seconds;
     this.distanceKm = record.distanceKm;
     this.workKj = record.workKj;
     this.#measuredSeconds = measuredSeconds;
-    this.samples.push(...record.samples.map(sample => ({ ...sample })));
+    this.samples.push(...record.samples.map((sample) => ({ ...sample })));
     this.#lastSample = Math.floor(this.samples.at(-1)?.seconds ?? -1);
     this.adjustment = adjustment;
     this.target = target;
@@ -83,7 +108,8 @@ export class Ride {
   async start(workout: Workout): Promise<void> {
     if (this.status !== "ready" || this.busy) return;
     if (!this.trainer.capabilities.current?.supportsPowerTarget) {
-      this.error = "This trainer does not support ERG power control. Open Trainer Lab for its available controls.";
+      this.error =
+        "This trainer does not support ERG power control. Open Trainer Lab for its available controls.";
       return;
     }
     this.workout = workout;
@@ -134,7 +160,10 @@ export class Ride {
       await this.#stopHardware();
       if (epoch === this.#epoch) this.status = "finished";
     } catch (error) {
-      if (epoch === this.#epoch) this.#interrupt(`Ride ended, but resistance release was not confirmed. ${message(error)} Reconnect before riding again.`);
+      if (epoch === this.#epoch)
+        this.#interrupt(
+          `Ride ended, but resistance release was not confirmed. ${message(error)} Reconnect before riding again.`,
+        );
     }
   }
 
@@ -158,11 +187,15 @@ export class Ride {
     this.#lastTick = now;
     if (delta > 5) this.#suspensionDetected = true;
     if (this.#suspensionDetected) {
-      await this.pause("Ride paused because the browser or computer went to sleep. Resume when ready.");
+      await this.pause(
+        "Ride paused because the browser or computer went to sleep. Resume when ready.",
+      );
       return;
     }
     if (now - this.#resumedAt > 6000 && !this.telemetry) {
-      await this.pause("No fresh trainer data. Ride paused; check the Bluetooth connection before resuming.");
+      await this.pause(
+        "No fresh trainer data. Ride paused; check the Bluetooth connection before resuming.",
+      );
       return;
     }
     const cadence = this.telemetry?.instantaneousCadenceRpm;
@@ -186,15 +219,26 @@ export class Ride {
 
   record(): RideRecord {
     return {
-      version: 1, startedAt: this.startedAt, name: this.workout?.name ?? "Ride", simulator: this.simulator,
-      seconds: this.elapsed, distanceKm: this.distanceKm, averagePower: this.averagePower, workKj: this.workKj,
+      version: 1,
+      startedAt: this.startedAt,
+      name: this.workout?.name ?? "Ride",
+      simulator: this.simulator,
+      seconds: this.elapsed,
+      distanceKm: this.distanceKm,
+      averagePower: this.averagePower,
+      workKj: this.workKj,
       measuredSeconds: this.#measuredSeconds,
-      completed: this.status === "finished" && this.workout?.seconds !== null && this.elapsed >= (this.workout?.seconds ?? Infinity),
+      completed:
+        this.status === "finished" &&
+        this.workout?.seconds !== null &&
+        this.elapsed >= (this.workout?.seconds ?? Infinity),
       samples: [...this.samples],
     };
   }
 
-  dispose(): void { for (const unsubscribe of this.#subscriptions) unsubscribe(); }
+  dispose(): void {
+    for (const unsubscribe of this.#subscriptions) unsubscribe();
+  }
 
   #resumeClock(): void {
     this.#lastTick = this.#resumedAt = this.now();
@@ -206,7 +250,10 @@ export class Ride {
 
   #desiredTarget(): number {
     if (!this.workout) return 0;
-    return trainerWatts(currentStep(this.workout, this.elapsed).step.watts + this.adjustment, this.trainer.capabilities.current?.powerRange);
+    return trainerWatts(
+      currentStep(this.workout, this.elapsed).step.watts + this.adjustment,
+      this.trainer.capabilities.current?.powerRange,
+    );
   }
 
   async #sendTarget(epoch: number): Promise<void> {
@@ -218,13 +265,18 @@ export class Ride {
   async #operate(operation: (epoch: number) => Promise<void>): Promise<void> {
     const epoch = this.#epoch;
     const pending = (async () => {
-      try { await operation(epoch); }
-      catch (error) {
+      try {
+        await operation(epoch);
+      } catch (error) {
         if (epoch !== this.#epoch) return;
         let reason = message(error);
-        try { await this.#stopHardware(); }
-        catch { reason += " Resistance release could not be confirmed."; }
-        if (epoch === this.#epoch) this.#interrupt(`${reason} Ride interrupted; reconnect before starting again.`);
+        try {
+          await this.#stopHardware();
+        } catch {
+          reason += " Resistance release could not be confirmed.";
+        }
+        if (epoch === this.#epoch)
+          this.#interrupt(`${reason} Ride interrupted; reconnect before starting again.`);
       }
     })();
     this.#pending = pending;
@@ -249,43 +301,90 @@ export class Ride {
     const watts = telemetry?.instantaneousPowerWatts;
     const speed = telemetry?.instantaneousSpeedKph;
     if (watts !== undefined) {
-      this.workKj += Math.max(0, watts) * delta / 1000;
+      this.workKj += (Math.max(0, watts) * delta) / 1000;
       this.#measuredSeconds += delta;
     }
-    if (speed !== undefined) this.distanceKm += Math.max(0, speed) * delta / 3600;
+    if (speed !== undefined) this.distanceKm += (Math.max(0, speed) * delta) / 3600;
     const second = Math.floor(this.elapsed);
     if (second === this.#lastSample) return;
     this.#lastSample = second;
-    this.samples.push({ seconds: this.elapsed, watts: watts ?? null, cadence: telemetry?.instantaneousCadenceRpm ?? null, speed: speed ?? null, target: this.target });
+    this.samples.push({
+      seconds: this.elapsed,
+      watts: watts ?? null,
+      cadence: telemetry?.instantaneousCadenceRpm ?? null,
+      speed: speed ?? null,
+      target: this.target,
+    });
   }
 }
 
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-function checkpointMeasuredSeconds(workout: Workout, record: RideRecord, simulator: boolean, adjustment: number): number {
-  if (record.version !== 1 || record.completed || record.simulator !== simulator || record.name !== workout.name
-    || !Number.isFinite(Date.parse(record.startedAt)) || !Number.isFinite(adjustment)
-    || ![record.seconds, record.workKj, record.distanceKm].every(nonnegative)
-    || (record.averagePower !== null && !nonnegative(record.averagePower))) throw new Error("This ride checkpoint is invalid or belongs to a different ride.");
-  const validSteps = workout.steps.every(step => nonnegative(step.watts) && step.seconds > 0
-    && (Number.isFinite(step.seconds) || (workout.seconds === null && workout.steps.length === 1 && step.seconds === Infinity)));
-  if (workout.steps.length === 0 || !validSteps
-    || (workout.seconds !== null && (!nonnegative(workout.seconds) || record.seconds >= workout.seconds
-      || Math.abs(workout.steps.reduce((seconds, step) => seconds + step.seconds, 0) - workout.seconds) > 0.001))) {
+function checkpointMeasuredSeconds(
+  workout: Workout,
+  record: Omit<RideRecord, "version"> & { version: unknown },
+  simulator: boolean,
+  adjustment: number,
+): number {
+  if (
+    record.version !== 1 ||
+    record.completed ||
+    record.simulator !== simulator ||
+    record.name !== workout.name ||
+    !Number.isFinite(Date.parse(record.startedAt)) ||
+    !Number.isFinite(adjustment) ||
+    ![record.seconds, record.workKj, record.distanceKm].every(nonnegative) ||
+    (record.averagePower !== null && !nonnegative(record.averagePower))
+  )
+    throw new Error("This ride checkpoint is invalid or belongs to a different ride.");
+  const validSteps = workout.steps.every(
+    (step) =>
+      nonnegative(step.watts) &&
+      step.seconds > 0 &&
+      (Number.isFinite(step.seconds) ||
+        (workout.seconds === null && workout.steps.length === 1 && step.seconds === Infinity)),
+  );
+  if (
+    workout.steps.length === 0 ||
+    !validSteps ||
+    (workout.seconds !== null &&
+      (!nonnegative(workout.seconds) ||
+        record.seconds >= workout.seconds ||
+        Math.abs(
+          workout.steps.reduce((seconds, step) => seconds + step.seconds, 0) - workout.seconds,
+        ) > 0.001))
+  ) {
     throw new Error("This workout is already complete or has an invalid duration.");
   }
   let previous = -1;
   for (const sample of record.samples) {
-    if (!nonnegative(sample.seconds) || sample.seconds < previous || sample.seconds > record.seconds || !nonnegative(sample.target)
-      || ![sample.watts, sample.cadence, sample.speed].every(value => value === null || Number.isFinite(value))) {
+    if (
+      !nonnegative(sample.seconds) ||
+      sample.seconds < previous ||
+      sample.seconds > record.seconds ||
+      !nonnegative(sample.target) ||
+      ![sample.watts, sample.cadence, sample.speed].every(
+        (value) => value === null || Number.isFinite(value),
+      )
+    ) {
       throw new Error("This ride checkpoint contains invalid samples.");
     }
     previous = sample.seconds;
   }
-  const legacyDuration = record.averagePower === null ? 0 : record.averagePower > 0 ? record.workKj * 1000 / record.averagePower : record.seconds;
+  const legacyDuration =
+    record.averagePower === null
+      ? 0
+      : record.averagePower > 0
+        ? (record.workKj * 1000) / record.averagePower
+        : record.seconds;
   const measured = record.measuredSeconds ?? Math.min(record.seconds, legacyDuration);
-  if (!nonnegative(measured) || measured > record.seconds || (record.workKj > 0 && measured === 0)) throw new Error("This ride checkpoint contains invalid measurements.");
+  if (!nonnegative(measured) || measured > record.seconds || (record.workKj > 0 && measured === 0))
+    throw new Error("This ride checkpoint contains invalid measurements.");
   return measured;
 }
 
-function nonnegative(value: number): boolean { return Number.isFinite(value) && value >= 0; }
+function nonnegative(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}

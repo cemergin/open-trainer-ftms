@@ -20,7 +20,7 @@ Desktop is the current priority. Mobile-specific polish and phone trainer testin
 
 1. Retained and hardened the independent FTMS library, including control ownership, transport cleanup, and queued-command behavior.
 2. Completed parallel work on lifecycle/recovery, app storage/UI, and diagnostic controls. Large production changes receive independent review.
-3. The latest local validation passed 114 tests: 92 app and 22 library. Type checking, production build, and package verification passed.
+3. The combined app and library suites run under the strict hardening gates: formatting, typed lint, coverage, release checks, types, build, and packed-package verification.
 4. Desktop browser verification covered workout selection, start/adjust/pause/resume/end, feedback, history, and reload recovery. A fresh-page recovery stayed paused, then resumed with the recorded data preserved. All ride controls fit at 1366 × 768. Trainer Lab's 80 W simulator sequence, 95 W adjustment, and Stop completed with a clean console.
 5. Final read-only Codeflow assessment against clean baseline `a0bcf55e7109703a4357d36504dc96faff98a73a` found no material cleanup candidates. Missing analyzer inputs are recorded privately as unavailable. GitHub Pages is published over HTTPS; the hosted ride app and Lab load correctly and the simulator flow works. See [GITHUB_PAGES.md](./GITHUB_PAGES.md).
 6. The local app is available at `http://127.0.0.1:4173`. A physical KICKR CORE session remains the final compatibility/response check.
@@ -35,3 +35,7 @@ Trainer adapters and browser capabilities enter through `src/services/index.ts`;
 - Measure source change size and inspect introduced complexity/duplication with a fresh read-only assessor. Keep raw telemetry in a private local note.
 - CRAP1 requires per-function complexity and basis-path coverage. Verbosity requires configured AST/clone outputs; erosion requires CC and callable SLOC. Mark absent inputs unavailable; do not invent scores or install analyzers solely to generate them.
 - Run at most one narrowly scoped cleanup pass for actionable regressions, then rerun relevant verification. Earlier assessments do not substitute for the final pass over the expanded scope.
+
+## Hardened foundation
+
+PR #7 now supplies the hardened FTMS core, strict quality gates, and physical device qualification. PR #18 is rebased onto it; merge #7 first. Trainer Lab retains its full diagnostics and adds the reusable qualification panel, encoding selection, reset control, and source/build fingerprint. Library control-loss fixes and their release impact now belong to #7.

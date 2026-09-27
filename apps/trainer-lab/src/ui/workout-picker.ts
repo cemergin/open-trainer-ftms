@@ -1,6 +1,14 @@
 import { WORKOUT_OPTIONS } from "../workout";
 
-const icons: Record<string, string> = { sun: "≋", zap: "ϟ", leaf: "◌", wind: "≈", activity: "⌁", mountain: "△", infinity: "∞" };
+const icons: Record<string, string> = {
+  sun: "≋",
+  zap: "ϟ",
+  leaf: "◌",
+  wind: "≈",
+  activity: "⌁",
+  mountain: "△",
+  infinity: "∞",
+};
 
 export function mountWorkoutPicker(fieldset: HTMLFieldSetElement): void {
   for (const option of WORKOUT_OPTIONS) {

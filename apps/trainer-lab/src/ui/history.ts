@@ -1,7 +1,11 @@
 import type { RideRecord } from "../ride";
 import { formatTime } from "../workout";
 
-export function renderRideHistory(container: HTMLElement, records: RideRecord[], download: (record: RideRecord) => void): void {
+export function renderRideHistory(
+  container: HTMLElement,
+  records: RideRecord[],
+  download: (record: RideRecord) => void,
+): void {
   container.replaceChildren();
   if (!records.length) {
     const empty = document.createElement("p");
@@ -17,7 +21,10 @@ export function renderRideHistory(container: HTMLElement, records: RideRecord[],
     const title = document.createElement("strong");
     title.textContent = `${record.simulator ? "Demo · " : ""}${record.name}`;
     const date = document.createElement("small");
-    date.textContent = new Date(record.startedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    date.textContent = new Date(record.startedAt).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
     name.append(title, date);
     const duration = document.createElement("span");
     duration.className = "history-metric";

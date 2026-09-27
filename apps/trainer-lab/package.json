@@ -7,7 +7,6 @@
     "test": "vitest run",
     "build": "vite build",
     "dev": "vite",
-    "test": "vitest run",
     "typecheck": "node ../../node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

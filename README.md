@@ -8,7 +8,7 @@ The workspace contains the independent `@open-trainer/ftms` library and a TypeSc
 
 ## Requirements
 
-- Node.js 22.12+ (22.x), 24.x, or 26+ for workspace development
+- Node.js 22.13+ (22.x), 24.x, or 26+ for workspace development
 - npm 10.9 or newer
 - Chrome or Edge for a real trainer
 - A secure context: HTTPS in production or `localhost` during development
@@ -43,13 +43,10 @@ Open the [live ride app](https://cemergin.github.io/open-trainer-ftms/) on free 
 ## Verify the workspace
 
 ```sh
-npm test
-npm run typecheck
-npm run build
-npm run verify:package
+npm run verify
 ```
 
-The latest local validation passed 114 tests (92 app and 22 library), type checking, production build, and package verification.
+Verification includes strict typed lint, formatting, library coverage thresholds, all app tests, release-gate tests, type checking, production builds, and a clean packed-package consumer. TypeScript 7 performs compilation; Microsoft’s TypeScript 6 compatibility API supplies typed ESLint until its TS7 compiler API is available.
 
 The library follows a test-first workflow. Its suite covers FTMS packet codecs, reactive state behavior, GATT operation serialization, FTMS command sequencing, trainer state transitions, and package export boundaries. App tests cover workout profiles, recovery and command races, power feedback, history/checkpoint validation, and diagnostic controls.
 
@@ -79,6 +76,12 @@ Published versions are managed with [Changesets](https://github.com/changesets/c
 5. Merge that version pull request when ready, then use the manual npm release workflow above.
 
 Changesets combine multiple pending entries and apply the highest required bump. Documentation, tests, CI, and unpublished Trainer Lab changes do not need a changeset. The versioning bot never publishes to npm.
+
+## Device qualification and release gates
+
+Trainer Lab includes the guided 12-step physical qualification panel, with persistent draft notes, fresh session counters, supported resistance-command encodings, and sanitized report export. Simulator activity never qualifies physical hardware. Metadata changes and changed device names reset physical evidence; reconnect only the same physical trainer during one report, since device names are not unique identifiers.
+
+Stable npm publishing stays blocked until a physical report matches the source, build configuration, and locked dependency fingerprint. The `next` channel supports hardware evaluation. This npm gate does not block local rides or GitHub Pages. See [DEVICE_INTEGRATION_GUIDE.md](./DEVICE_INTEGRATION_GUIDE.md), [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md), and [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md).
 
 ## First real-trainer session
 

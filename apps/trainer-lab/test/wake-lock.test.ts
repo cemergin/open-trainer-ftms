@@ -1,11 +1,14 @@
+import type { keepScreenAwake as KeepScreenAwake } from "../src/services";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class MockWakeLock extends EventTarget {
-  release = vi.fn(async () => { this.dispatchEvent(new Event("release")); });
+  release = vi.fn(async () => {
+    this.dispatchEvent(new Event("release"));
+  });
 }
 
 let request: ReturnType<typeof vi.fn>;
-let keepScreenAwake: typeof import("../src/services").keepScreenAwake;
+let keepScreenAwake: typeof KeepScreenAwake;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -15,7 +18,9 @@ beforeEach(async () => {
   ({ keepScreenAwake } = await import("../src/services"));
 });
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("screen wake lock", () => {
   it("reacquires after the browser releases the current lock", async () => {
@@ -46,7 +51,11 @@ describe("screen wake lock", () => {
 
   it("keeps a pending request unique across pause and resume", async () => {
     let resolve!: (lock: MockWakeLock) => void;
-    request.mockReturnValueOnce(new Promise<MockWakeLock>(done => { resolve = done; }));
+    request.mockReturnValueOnce(
+      new Promise<MockWakeLock>((done) => {
+        resolve = done;
+      }),
+    );
     const pending = keepScreenAwake(true);
     await keepScreenAwake(true);
     await keepScreenAwake(false);
@@ -63,7 +72,11 @@ describe("screen wake lock", () => {
 
   it("releases a late lock when the ride has ended", async () => {
     let resolve!: (lock: MockWakeLock) => void;
-    request.mockReturnValueOnce(new Promise<MockWakeLock>(done => { resolve = done; }));
+    request.mockReturnValueOnce(
+      new Promise<MockWakeLock>((done) => {
+        resolve = done;
+      }),
+    );
     const pending = keepScreenAwake(true);
     await keepScreenAwake(false);
     const lock = new MockWakeLock();
