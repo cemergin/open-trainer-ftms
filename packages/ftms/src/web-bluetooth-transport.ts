@@ -1,3 +1,5 @@
+/// <reference types="web-bluetooth" preserve="true" />
+
 import { FtmsError } from "./errors.js";
 import { AsyncOperationQueue } from "./gatt-operation-queue.js";
 import { EventSource } from "./reactive.js";

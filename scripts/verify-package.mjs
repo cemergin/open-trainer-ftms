@@ -85,9 +85,14 @@ try {
     await trainer.connect();
     if (trainer.connection.current !== "ready") throw new Error("Installed simulator failed to connect.");
     await trainer.disconnect();
+    console.log("Verified installed simulator on " + process.version);
   `;
 
-  run(process.execPath, ["--input-type=module", "--eval", smokeTest], consumerDirectory);
+  run(
+    process.env.OPEN_TRAINER_RUNTIME_NODE || process.execPath,
+    ["--input-type=module", "--eval", smokeTest],
+    consumerDirectory,
+  );
   console.log("Verified packed metadata, types, exports, installation, and runtime imports.");
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
