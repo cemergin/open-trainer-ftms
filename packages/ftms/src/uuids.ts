@@ -10,5 +10,7 @@ export const FTMS_UUIDS = {
   machineStatus: 0x2ada,
 } as const;
 
-export type FtmsCharacteristicUuid =
-  (typeof FTMS_UUIDS)[Exclude<keyof typeof FTMS_UUIDS, "service">];
+export type FtmsCharacteristicUuid = (typeof FTMS_UUIDS)[Exclude<
+  keyof typeof FTMS_UUIDS,
+  "service"
+>];

@@ -1,8 +1,16 @@
 export {
   FtmsCapabilityError,
+  FtmsCommandSupersededError,
   FtmsControlError,
   FtmsError,
   FtmsProtocolError,
+  FtmsRangeError,
+  FtmsStateError,
+  FtmsTimeoutError,
+  FTMS_ERROR_CODE,
+  normalizeFtmsError,
+  type FtmsErrorCode,
+  type FtmsErrorOptions,
 } from "./errors.js";
 export {
   distinctStream,
@@ -15,6 +23,9 @@ export {
 export {
   CONTROL_RESULT,
   type ControlPointResponse,
+  type MachineStatus,
+  type MachineStatusKind,
+  type ResistanceControlFormat,
   type SimulationParameters,
   type Trainer,
   type TrainerActivityState,
