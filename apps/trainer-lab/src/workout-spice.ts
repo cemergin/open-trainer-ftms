@@ -1,10 +1,22 @@
-import type { Workout, WorkoutMode, WorkoutStep } from "./workout";
+import type { SpiceLevel, Workout, WorkoutMode, WorkoutStep } from "./workout";
+
+export const SPICE_LEVEL_LABELS: Record<SpiceLevel, string> = {
+  mild: "Mild",
+  spicy: "Spicy",
+  hot: "Hot",
+};
 
 /** Produce a repeatable variation of a timed preset without changing its bookends. */
-export function spiceWorkout(workout: Workout, mode: WorkoutMode, variation: number): Workout {
+export function spiceWorkout(
+  workout: Workout,
+  mode: WorkoutMode,
+  variation: number,
+  level: SpiceLevel = "spicy",
+): Workout {
   if (mode === "free" || workout.seconds === null) return workout;
   if (!Number.isInteger(variation) || variation < 1 || variation > 9999)
     throw new Error("Choose a variation from 1 to 9999.");
+  if (!Object.hasOwn(SPICE_LEVEL_LABELS, level)) throw new Error("Choose Mild, Spicy, or Hot.");
   const warmup = workout.steps[0];
   const cooldown = workout.steps.at(-1);
   const original = workout.steps.slice(1, -1);
@@ -16,13 +28,25 @@ export function spiceWorkout(workout: Workout, mode: WorkoutMode, variation: num
     Math.max(...original.flatMap((step) => [step.watts, step.endWatts ?? step.watts])),
   );
   const ceiling = mode === "recovery" ? Math.max(0, peak - 1) : peak;
+  const shape = {
+    recovery: { center: 0.94, mild: 0.5, hot: 1.2 },
+    endurance: { center: 0.93, mild: 0.45, hot: 1.3 },
+    intervals: { center: 0.7, mild: 0.65, hot: 1.25 },
+    hills: { center: 0.7, mild: 0.65, hot: 1.2 },
+    mountain: { center: 0.75, mild: 0.65, hot: 1.2 },
+    tempo: { center: 0.9, mild: 0.55, hot: 1.3 },
+  }[mode];
+  const timingSwing = level === "mild" ? 0.12 : level === "hot" ? 0.6 : 0.3;
   let state = variation;
   const random = (low: number, high: number): number => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return low + (high - low) * (state / 4294967296);
   };
-  const power = (factor: number): number =>
-    Math.min(ceiling, Math.max(0, Math.round(peak * factor)));
+  const power = (factor: number): number => {
+    const shaped =
+      level === "spicy" ? factor : shape.center + (factor - shape.center) * shape[level];
+    return Math.min(ceiling, Math.max(0, Math.round(peak * shaped)));
+  };
   const plans: { step: WorkoutStep; weight: number }[] = [];
   const add = (
     name: string,
@@ -33,7 +57,7 @@ export function spiceWorkout(workout: Workout, mode: WorkoutMode, variation: num
   ): void => {
     plans.push({
       step: { name, seconds: 0, watts: power(from), endWatts: power(to), effort },
-      weight: weight * random(0.7, 1.3),
+      weight: weight * random(1 - timingSwing, 1 + timingSwing),
     });
   };
 
@@ -134,8 +158,8 @@ export function spiceWorkout(workout: Workout, mode: WorkoutMode, variation: num
   });
   return {
     ...workout,
-    name: `${workout.name} · Spice ${variation}`,
+    name: `${workout.name} · ${SPICE_LEVEL_LABELS[level]} mix ${variation}`,
     steps: [{ ...warmup }, ...middle, { ...cooldown }],
-    spice: { mode, variation },
+    spice: { mode, variation, level },
   };
 }

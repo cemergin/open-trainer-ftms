@@ -8,6 +8,12 @@ import {
 } from "./ride-control";
 import { findRoute } from "./routes";
 import { currentStep, trainerWatts, type Workout } from "./workout";
+import {
+  MAX_INTENSITY,
+  MIN_INTENSITY,
+  validWorkoutIntensity,
+  workoutTarget,
+} from "./workout-intensity";
 
 const AUTO_PAUSE_DELAY_MS = 20_000;
 
@@ -40,6 +46,7 @@ export interface RideRecord {
   routeId?: string;
   workoutElapsed?: number;
   controlTarget?: number;
+  intensity?: number;
   sourceChanges?: { seconds: number; sources: SensorSourceSnapshot }[];
 }
 
@@ -54,6 +61,7 @@ export class Ride {
   resistance = 5;
   target = 0;
   adjustment = 0;
+  intensity = 100;
   error = "";
   distanceKm = 0;
   workKj = 0;
@@ -125,8 +133,11 @@ export class Ride {
     if (this.status !== "ready" || this.busy)
       throw new Error("Only a new ride can restore a checkpoint.");
     const measuredSeconds = checkpointMeasuredSeconds(workout, record, this.simulator, adjustment);
-    const target = trainerWatts(
-      currentStep(workout, record.workoutElapsed ?? record.seconds).step.watts + adjustment,
+    const intensity = record.intensity ?? 100;
+    const target = workoutTarget(
+      currentStep(workout, record.workoutElapsed ?? record.seconds).step.watts,
+      intensity,
+      adjustment,
       this.trainer.capabilities.current?.powerRange,
     );
     this.workout = workout;
@@ -144,6 +155,7 @@ export class Ride {
     this.#sourceKey = JSON.stringify(this.#sourceChanges.at(-1)?.sources ?? null);
     this.#lastSample = Math.floor(this.samples.at(-1)?.seconds ?? -1);
     this.adjustment = adjustment;
+    this.intensity = intensity;
     this.target = this.controlMode === "erg" ? target : 0;
     this.controlTarget = this.#desiredTarget();
     this.status = "paused";
@@ -223,7 +235,13 @@ export class Ride {
   }
 
   async adjust(watts: number): Promise<void> {
-    if (!this.workout || !["riding", "paused"].includes(this.status) || this.busy) return;
+    if (
+      !this.workout ||
+      !["riding", "paused"].includes(this.status) ||
+      this.busy ||
+      !Number.isFinite(watts)
+    )
+      return;
     if (this.controlMode !== "erg") {
       if (this.controlMode === "terrain")
         this.adjustment = Math.max(-5, Math.min(5, this.adjustment + Math.sign(watts) * 0.5));
@@ -241,7 +259,29 @@ export class Ride {
     const base = currentStep(this.workout, this.workoutElapsed).step.watts;
     const range = this.trainer.capabilities.current?.powerRange;
     const change = Math.sign(watts) * Math.max(Math.abs(watts), range?.increment ?? 1);
-    this.adjustment = trainerWatts(this.target + change, range) - base;
+    this.adjustment = (trainerWatts(this.target + change, range) * 100) / this.intensity - base;
+    if (this.status === "paused") {
+      this.target = this.controlTarget = this.#desiredTarget();
+      return;
+    }
+    await this.#operate((epoch) => this.#sendTarget(epoch));
+  }
+
+  async adjustIntensity(delta: number): Promise<void> {
+    if (
+      !this.workout ||
+      this.controlMode !== "erg" ||
+      !["riding", "paused"].includes(this.status) ||
+      this.busy ||
+      !Number.isFinite(delta)
+    )
+      return;
+    const intensity = Math.max(
+      MIN_INTENSITY,
+      Math.min(MAX_INTENSITY, this.intensity + Math.round(delta)),
+    );
+    if (intensity === this.intensity) return;
+    this.intensity = intensity;
     if (this.status === "paused") {
       this.target = this.controlTarget = this.#desiredTarget();
       return;
@@ -333,6 +373,7 @@ export class Ride {
       workoutElapsed: this.workoutElapsed,
       controlMode: this.controlMode,
       controlTarget: this.controlTarget,
+      intensity: this.intensity,
       ...(this.routeId ? { routeId: this.routeId } : {}),
       distanceKm: this.distanceKm,
       averagePower: this.averagePower,
@@ -365,8 +406,10 @@ export class Ride {
       return resistanceTarget(this.resistance, this.trainer.capabilities.current?.resistanceRange);
     if (this.controlMode === "terrain")
       return terrainTarget(this.routeId, this.distanceKm, this.adjustment);
-    return trainerWatts(
-      currentStep(this.workout, this.workoutElapsed).step.watts + this.adjustment,
+    return workoutTarget(
+      currentStep(this.workout, this.workoutElapsed).step.watts,
+      this.intensity,
+      this.adjustment,
       this.trainer.capabilities.current?.powerRange,
     );
   }
@@ -471,6 +514,7 @@ function checkpointMeasuredSeconds(
     (record.controlMode !== undefined &&
       !["erg", "resistance", "terrain"].includes(record.controlMode)) ||
     (record.controlTarget !== undefined && !Number.isFinite(record.controlTarget)) ||
+    !validWorkoutIntensity(record.intensity, record.controlMode) ||
     ![record.seconds, record.workKj, record.distanceKm].every(nonnegative) ||
     (record.averagePower !== null && !nonnegative(record.averagePower))
   )

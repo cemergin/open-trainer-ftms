@@ -29,10 +29,12 @@ Keep the existing dark palette, shared tokens, large ride controls, and restrain
 ## Delivered and verified
 
 - Implemented the six workstreams above, including visible screen wake-lock status, retry backoff, and reacquisition after returning to the tab.
-- 243 library tests, 236 app tests, and 12 release-gate tests pass. Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
+- 243 library tests, 325 app tests, and 12 release-gate tests pass. Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
 - Added the live power/heart-rate chart with a two-minute active-time window, labelled scales, an ERG target trace, pause/recovery support, and missing-data gaps.
 - Low cadence now shows a 20-second auto-pause countdown. Pedaling cancels it, missing cadence is not treated as zero, and resuming starts a fresh countdown if needed.
 - Duration options include 15, 20, 30, 40, 45, and 60 minutes. Optional Spice adds repeatable variations to all six timed ERG presets, with a Shuffle button and mix index. Warm-up, cool-down, and total duration stay fixed; ramp previews show the changing power targets. Custom workouts, free rides, and other control modes remain unchanged.
+- Added Mild / Spicy / Hot seasoning, percentage-based workout intensity around a saved watt reference, and an Up next card with a final-ten-second highlight. Intensity scales the shared ERG target calculation used by the trainer, profile preview, and next-interval details; legacy rides default to 100%.
+- Browser checks verified all heat levels, 100/105/110/115% intensity, paused adjustments, exact reference/level/profile/countdown recovery, the ten-second highlight, and the finish-line card. Independent correctness review found no regressions; the quality pass consolidated the intensity validation rule shared by recovery and storage.
 - Spice browser checks covered shuffle/toggle stability, mode restrictions, saving a favorite, active-ride locking, ramp targets, and exact close/reopen recovery. Generated durations use whole seconds and the checkpoint saves the actual profile.
 - Internal-browser checks exercised terrain adjustments, skip/extend, pause/resume, closing/reopening recovery, saved analysis, a custom ramp/repeated workout, external demo heart rate, Lab cadence/spin-down diagnostics, offline replay, and fault handling.
 - Independent reviews fixed stop/calibration ordering, interleaved replay notifications, fault occurrence counting, stale sensor cleanup, resistance rounding, source provenance/recovery, and backup overwrite risks.

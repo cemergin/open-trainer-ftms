@@ -4,6 +4,7 @@
   margin-block: var(--space-6);
 }
 .spice-setting {
+  --spice-color: var(--color-spice-mild);
   margin-block: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--color-border);
@@ -12,8 +13,36 @@
   transition: border-color var(--motion-standard);
 }
 .spice-setting[data-active="true"] {
-  border-color: var(--color-border-selected);
+  border-color: var(--spice-color);
   background: var(--color-success-surface);
+}
+.spice-setting[data-level="spicy"] {
+  --spice-color: var(--color-spice-spicy);
+}
+.spice-setting[data-level="hot"] {
+  --spice-color: var(--color-spice-hot);
+}
+.spice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.spice-controls label {
+  width: 100%;
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+.spice-controls select {
+  flex: 1;
+  min-width: 100px;
+  min-height: var(--control-height);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+  color: var(--spice-color);
+  padding-inline: var(--space-3);
+  font: inherit;
 }
 .spice-heading,
 .spice-heading label {
@@ -35,9 +64,19 @@
   accent-color: var(--color-accent);
 }
 #spice-index {
-  color: var(--color-accent);
+  color: var(--spice-color);
   font: var(--text-caption) var(--font-mono);
   white-space: nowrap;
+}
+#target-detail {
+  margin-top: var(--space-2);
+  color: var(--color-text-secondary);
+}
+#intensity-help {
+  margin-top: var(--space-2);
+  max-width: 26ch;
+  font-size: var(--text-caption);
+  line-height: 1.5;
 }
 #spice-help {
   margin-block: var(--space-2) var(--space-3);

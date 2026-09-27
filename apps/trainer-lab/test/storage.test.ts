@@ -121,6 +121,13 @@ describe("saved ride history", () => {
     { samples: [{ ...record.samples[0], cadence: undefined }] },
     { measuredSeconds: -1 },
     { measuredSeconds: 2 },
+    { intensity: 49 },
+    { intensity: 151 },
+    { intensity: 99.5 },
+    { intensity: "110" },
+    { intensity: null },
+    { intensity: 110, controlMode: "terrain" },
+    { intensity: 90, controlMode: "resistance" },
   ])("ignores malformed records while keeping valid history: %j", (invalid) => {
     stored.set(
       KEY,
@@ -174,6 +181,39 @@ describe("ride recovery checkpoints", () => {
     expect(JSON.parse(exportAllData()).checkpoint.workout).toEqual(workout);
   });
 
+  it("preserves reference power, heat level, and intensity together", () => {
+    const workout = spiceWorkout(createWorkout("hills", 20, 120), "hills", 42, "hot");
+    const saved = {
+      ...checkpoint,
+      workout,
+      record: { ...record, name: workout.name, intensity: 110 },
+    };
+    expect(saveCheckpoint(saved)).toBe(true);
+    expect(loadCheckpoint()).toEqual(saved);
+    expect(JSON.parse(exportAllData()).checkpoint).toEqual(saved);
+  });
+
+  it("accepts old Spice checkpoints without reference power, heat level, or intensity", () => {
+    const workout = { ...checkpoint.workout, spice: { mode: "endurance" as const, variation: 2 } };
+    delete workout.referenceWatts;
+    const legacy = { ...checkpoint, workout };
+    expect(saveCheckpoint(legacy)).toBe(true);
+    expect(loadCheckpoint()).toEqual(legacy);
+  });
+
+  it.each([0, 24, 601, "100", null])("rejects invalid reference power %j", (referenceWatts) => {
+    stored.set(
+      KEY,
+      JSON.stringify({
+        version: 2,
+        rides: [record],
+        checkpoint: { ...checkpoint, workout: { ...checkpoint.workout, referenceWatts } },
+      }),
+    );
+    expect(loadCheckpoint()).toBeNull();
+    expect(loadRide()).toEqual(record);
+  });
+
   it.each([
     null,
     { mode: "free", variation: 1 },
@@ -182,6 +222,8 @@ describe("ride recovery checkpoints", () => {
     { mode: "hills", variation: 10000 },
     { mode: "hills", variation: 1.5 },
     { mode: "hills", variation: "2" },
+    { mode: "hills", variation: 2, level: "extra" },
+    { mode: "hills", variation: 2, level: null },
   ])("rejects invalid Spice metadata without losing ride history: %j", (spice) => {
     stored.set(
       KEY,

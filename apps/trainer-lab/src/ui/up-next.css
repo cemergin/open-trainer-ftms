@@ -1,0 +1,67 @@
+.up-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-inset);
+  transition:
+    background var(--motion-standard),
+    border-color var(--motion-standard);
+}
+.up-next[data-soon="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-success-surface);
+}
+#up-next-name {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-brand);
+}
+#up-next-detail {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+#up-next-countdown {
+  color: var(--color-text-secondary);
+  font: var(--weight-semibold) var(--text-body) var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+.up-next[data-soon="true"] #up-next-countdown {
+  color: var(--color-accent);
+}
+@media (min-width: 900px) {
+  body.riding .up-next {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    margin-block: var(--space-3);
+  }
+  body.riding .live-chart-panel {
+    grid-row: 6 / 9;
+  }
+  body.riding .profile-heading {
+    grid-row: 6;
+  }
+  body.riding .workout-profile {
+    grid-row: 7;
+  }
+  body.riding .profile-axis {
+    grid-row: 8;
+  }
+}
+@media (max-width: 480px) {
+  .up-next {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .up-next {
+    transition: none;
+  }
+}

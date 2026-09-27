@@ -31,10 +31,13 @@ import { mountWorkoutPicker } from "./ui/workout-picker";
 import { renderRideHistory } from "./ui/history";
 import { renderLiveChart } from "./ui/live-chart";
 import { mountWorkoutSpice } from "./ui/workout-spice";
+import { renderUpNext } from "./ui/up-next";
+import { MAX_INTENSITY, MIN_INTENSITY, workoutTarget } from "./workout-intensity";
 import { byId } from "./ui/dom";
 import "./style.css";
 import "./training.css";
 import "./ui/live-chart.css";
+import "./ui/up-next.css";
 
 const ui = {
   connect: byId("connect-real", HTMLButtonElement),
@@ -143,6 +146,7 @@ function showRecoveredWorkout(): void {
   const workout = ride?.workout;
   if (!workout) return;
   spice.restore(workout);
+  ui.watts.value = workout.referenceWatts === undefined ? "" : String(workout.referenceWatts);
   const sources = ride?.record().sourceChanges?.at(-1)?.sources;
   if (sources)
     for (const metric of ["power", "cadence", "heartRate"] as const)
@@ -236,6 +240,7 @@ function render(): void {
   const workoutElapsed = ride?.workoutElapsed ?? elapsed;
   const stage = currentStep(workout, workoutElapsed);
   const controlMode = ride?.workout ? ride.controlMode : (training.options.controlMode ?? "erg");
+  const intensity = ride?.intensity ?? 100;
   const telemetry = connected ? ride?.telemetry : null;
   const target = ride?.workout
     ? ride.target
@@ -328,7 +333,7 @@ function render(): void {
   );
   const controlTarget =
     controlMode === "erg"
-      ? target
+      ? intensity
       : ride?.workout
         ? ride.controlTarget
         : controlMode === "terrain"
@@ -337,14 +342,25 @@ function render(): void {
   text(
     "control-label",
     controlMode === "erg"
-      ? "TARGET POWER"
+      ? "WORKOUT INTENSITY"
       : controlMode === "terrain"
         ? "ROAD GRADE"
         : "RESISTANCE",
   );
-  const targetUnit = controlMode === "erg" ? "W" : controlMode === "terrain" ? "%" : "level";
+  const targetUnit = controlMode === "resistance" ? "level" : "%";
   text("control-unit", targetUnit);
   text("target", String(controlTarget));
+  byId("target-detail").hidden = byId("intensity-help").hidden = controlMode !== "erg";
+  text(
+    "target-detail",
+    `Now ${target} W${workout.referenceWatts ? ` · ${Math.round((target / workout.referenceWatts) * 100)}% effort` : ""}`,
+  );
+  text(
+    "intensity-help",
+    workout.referenceWatts
+      ? `Reference ${workout.referenceWatts} W · scales the whole workout`
+      : "Scales every target in your workout.",
+  );
   const autoPause = ride?.autoPauseSeconds ?? null;
   byId("auto-pause").hidden = autoPause === null;
   text("auto-pause-countdown", autoPause === 0 ? "Pausing…" : `${autoPause ?? 20}s`);
@@ -377,6 +393,15 @@ function render(): void {
         ? "ride as long as you like"
         : "finish feeling good",
   );
+  renderUpNext(
+    workout,
+    workoutElapsed,
+    status,
+    controlMode,
+    intensity,
+    ride?.adjustment ?? 0,
+    trainer?.capabilities.current?.powerRange,
+  );
   ui.start.hidden = (active && status !== "paused") || ended;
   ui.start.disabled =
     !connected ||
@@ -392,16 +417,25 @@ function render(): void {
   ui.stop.disabled = status === "stopping";
   ui.stop.textContent = status === "stopping" ? "Stopping…" : "■ End ride";
   ui.up.disabled = ui.down.disabled = !["riding", "paused"].includes(status) || Boolean(ride?.busy);
+  if (controlMode === "erg") {
+    ui.down.disabled ||= intensity <= MIN_INTENSITY;
+    ui.up.disabled ||= intensity >= MAX_INTENSITY;
+  }
   const targetStep =
     controlMode === "erg"
-      ? Math.max(5, trainer?.capabilities.current?.powerRange?.increment ?? 1)
+      ? 5
       : controlMode === "terrain"
         ? 0.5
         : Math.max(1, trainer?.capabilities.current?.resistanceRange?.increment ?? 1);
-  ui.down.setAttribute("aria-label", `Decrease target by ${targetStep} ${targetUnit}`);
-  ui.up.setAttribute("aria-label", `Increase target by ${targetStep} ${targetUnit}`);
+  const changeLabel =
+    controlMode === "erg"
+      ? "workout intensity by 5 percentage points"
+      : `target by ${targetStep} ${targetUnit}`;
+  ui.down.setAttribute("aria-label", `Decrease ${changeLabel}`);
+  ui.up.setAttribute("aria-label", `Increase ${changeLabel}`);
   const stepLabel = document.querySelector(".target-controls span");
-  if (stepLabel) stepLabel.textContent = `${targetStep} ${targetUnit}`;
+  if (stepLabel)
+    stepLabel.textContent = controlMode === "erg" ? "5%" : `${targetStep} ${targetUnit}`;
   ui.options.disabled = status !== "ready";
   ui.watts.disabled =
     status !== "ready" || controlMode !== "erg" || Boolean(training.customWorkout);
@@ -423,15 +457,15 @@ function render(): void {
   text(
     "target-help",
     ui.watts.value.trim() === ""
-      ? `Auto suggests ${automaticTarget()} W for this ride. This is a starting point, not a fitness test. Adjust any time.`
-      : "Your own target is selected. Clear the field to let the app choose a starting power.",
+      ? `Auto suggests a ${automaticTarget()} W reference. Efforts build around it; workout intensity scales all targets. This is a starting point, not a fitness test.`
+      : "Your reference is the workout’s midpoint. Efforts and recoveries use multipliers; change intensity during the ride to scale them together.",
   );
   text(
     "setup-footer",
     controlMode !== "erg"
       ? "Power is set by your effort. The selected workout provides timing and cadence cues."
       : mode() === "free"
-        ? "Change the target any time with the + and − buttons."
+        ? "Use + and − to adjust intensity around your reference power."
         : `Your warm-up starts gently at ${trainerWatts(currentStep(workout, 0).step.watts, trainer?.capabilities.current?.powerRange)} W.`,
   );
   renderProfile(workout, stage.index, workoutElapsed, active);
@@ -467,14 +501,28 @@ function renderProfile(
   const erg =
     (ride?.workout ? ride.controlMode : (training.options.controlMode ?? "erg")) === "erg";
   const adjustment = erg ? (ride?.adjustment ?? 0) : 0;
-  const key = JSON.stringify([workout, adjustment, erg, trainer?.capabilities.current?.powerRange]);
+  const intensity = erg ? (ride?.intensity ?? 100) : 100;
+  const key = JSON.stringify([
+    workout,
+    adjustment,
+    intensity,
+    erg,
+    trainer?.capabilities.current?.powerRange,
+  ]);
   if (key !== profileKey) {
     profileKey = key;
     ui.profile.replaceChildren();
     const powers = workout.steps.map((step) => ({
-      start: trainerWatts(step.watts + adjustment, trainer?.capabilities.current?.powerRange),
-      end: trainerWatts(
-        (step.endWatts ?? step.watts) + adjustment,
+      start: workoutTarget(
+        step.watts,
+        intensity,
+        adjustment,
+        trainer?.capabilities.current?.powerRange,
+      ),
+      end: workoutTarget(
+        step.endWatts ?? step.watts,
+        intensity,
+        adjustment,
         trainer?.capabilities.current?.powerRange,
       ),
     }));
@@ -652,7 +700,8 @@ ui.down.addEventListener(
   "click",
   () =>
     void act(async () => {
-      await ride?.adjust(-5);
+      if (ride?.controlMode === "erg") await ride.adjustIntensity(-5);
+      else await ride?.adjust(-5);
       persistRide(true);
     }),
 );
@@ -660,7 +709,8 @@ ui.up.addEventListener(
   "click",
   () =>
     void act(async () => {
-      await ride?.adjust(5);
+      if (ride?.controlMode === "erg") await ride.adjustIntensity(5);
+      else await ride?.adjust(5);
       persistRide(true);
     }),
 );

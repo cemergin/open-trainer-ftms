@@ -1,5 +1,6 @@
 import type { RideRecord, RideSample } from "../ride";
-import { WORKOUT_OPTIONS, type Workout, type WorkoutStep } from "../workout";
+import { WORKOUT_OPTIONS, type SpiceLevel, type Workout, type WorkoutStep } from "../workout";
+import { validWorkoutIntensity } from "../workout-intensity";
 
 const KEY = "open-trainer:rides:v2";
 export const BACKUP_BYTE_LIMIT = 20_000_000;
@@ -263,8 +264,20 @@ function decodeWorkout(value: unknown): Workout | null {
   )
     return null;
   const spice = value.spice === undefined ? undefined : decodeSpice(value.spice);
-  if (spice === null || (spice && value.seconds === null)) return null;
-  return { name: value.name, seconds: value.seconds, steps, ...(spice ? { spice } : {}) };
+  if (
+    spice === null ||
+    (spice && value.seconds === null) ||
+    (value.referenceWatts !== undefined &&
+      (!finite(value.referenceWatts) || value.referenceWatts < 25 || value.referenceWatts > 600))
+  )
+    return null;
+  return {
+    name: value.name,
+    seconds: value.seconds,
+    steps,
+    ...(spice ? { spice } : {}),
+    ...(value.referenceWatts === undefined ? {} : { referenceWatts: value.referenceWatts }),
+  };
 }
 
 function decodeSpice(value: unknown): Workout["spice"] | null {
@@ -276,10 +289,16 @@ function decodeSpice(value: unknown): Workout["spice"] | null {
     !finite(value.variation) ||
     !Number.isInteger(value.variation) ||
     value.variation < 1 ||
-    value.variation > 9999
+    value.variation > 9999 ||
+    (value.level !== undefined &&
+      (typeof value.level !== "string" || !["mild", "spicy", "hot"].includes(value.level)))
   )
     return null;
-  return { mode, variation: value.variation };
+  return {
+    mode,
+    variation: value.variation,
+    ...(value.level === undefined ? {} : { level: value.level as SpiceLevel }),
+  };
 }
 
 function validRecord(value: unknown): value is RideRecord {
@@ -302,6 +321,7 @@ function validRecord(value: unknown): value is RideRecord {
       (typeof value.routeId !== "string" || value.routeId.length > 100)) ||
     (value.workoutElapsed !== undefined && !nonnegative(value.workoutElapsed)) ||
     (value.controlTarget !== undefined && !finite(value.controlTarget)) ||
+    !validWorkoutIntensity(value.intensity, value.controlMode) ||
     !Array.isArray(value.samples) ||
     value.samples.length > SAMPLE_LIMIT ||
     !value.samples.every(validSample) ||

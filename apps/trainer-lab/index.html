@@ -94,28 +94,30 @@
                 <span id="power-caption" class="metric-caption">Live from your trainer</span>
               </div>
               <div class="target-metric">
-                <span class="metric-label" id="control-label">TARGET POWER</span>
+                <span class="metric-label" id="control-label">WORKOUT INTENSITY</span>
                 <div>
-                  <strong id="target">60</strong><span class="unit" id="control-unit">W</span>
+                  <strong id="target">100</strong><span class="unit" id="control-unit">%</span>
                 </div>
+                <p id="target-detail" class="metric-caption">Now 60 W · reference 100 W</p>
                 <div class="target-controls">
                   <button
                     id="power-down"
                     class="square-button"
-                    aria-label="Decrease target by 5 watts"
+                    aria-label="Decrease workout intensity by 5 percentage points"
                     disabled
                   >
                     −</button
-                  ><span>5 W</span
+                  ><span>5%</span
                   ><button
                     id="power-up"
                     class="square-button"
-                    aria-label="Increase target by 5 watts"
+                    aria-label="Increase workout intensity by 5 percentage points"
                     disabled
                   >
                     +
                   </button>
                 </div>
+                <p id="intensity-help" class="metric-caption">Scales every effort and recovery.</p>
               </div>
             </div>
             <div id="ride-feedback" class="ride-feedback" data-band="waiting">
@@ -178,6 +180,14 @@
                 ><strong id="remaining">05:00</strong><small id="next-step">warm up</small>
               </div>
             </div>
+            <section id="up-next" class="up-next" aria-labelledby="up-next-label" hidden>
+              <div>
+                <span class="metric-label" id="up-next-label">UP NEXT</span>
+                <strong id="up-next-name"></strong>
+                <p id="up-next-detail"></p>
+              </div>
+              <strong id="up-next-countdown" role="timer" aria-live="off"></strong>
+            </section>
             <figure class="live-chart-panel" aria-labelledby="live-chart-title">
               <div class="live-chart-heading">
                 <span class="metric-label" id="live-chart-title">YOUR LIVE RHYTHM</span>
@@ -270,7 +280,7 @@
               </select>
             </div>
             <div class="settings-row" id="power-setting">
-              <label for="base-power">STEADY TARGET <small>OPTIONAL</small></label>
+              <label for="base-power">REFERENCE POWER <small>OPTIONAL</small></label>
               <div class="watts-input">
                 <input
                   id="base-power"
@@ -284,8 +294,8 @@
               </div>
             </div>
             <p id="target-help" class="setup-note">
-              Leave it on Auto for a suggested starting power, or choose your own. You can adjust it
-              during the ride.
+              Your starting point at 100%. Leave Auto on, or choose watts once and adjust workout
+              intensity as you ride.
             </p>
             <div id="spice-setting" class="spice-setting" data-active="false">
               <div class="spice-heading">
@@ -296,15 +306,23 @@
                 <span id="spice-index">Classic</span>
               </div>
               <p id="spice-help">Different hills, peaks, and recoveries. Same ride length.</p>
-              <button
-                id="spice-shuffle"
-                class="button subtle"
-                type="button"
-                disabled
-                aria-label="Shuffle workout variation"
-              >
-                ↻ Shuffle
-              </button>
+              <div class="spice-controls">
+                <label for="spice-level">Season to taste</label>
+                <select id="spice-level" aria-describedby="spice-help" disabled>
+                  <option value="mild">Mild</option>
+                  <option value="spicy" selected>Spicy</option>
+                  <option value="hot">Hot</option>
+                </select>
+                <button
+                  id="spice-shuffle"
+                  class="button subtle"
+                  type="button"
+                  disabled
+                  aria-label="Shuffle workout variation"
+                >
+                  ↻ Shuffle
+                </button>
+              </div>
             </div>
             <div class="mode-controls">
               <label

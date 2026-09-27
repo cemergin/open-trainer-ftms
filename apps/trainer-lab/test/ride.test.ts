@@ -60,6 +60,14 @@ const shortWorkout = {
     { name: "Cool down", seconds: 2, watts: 50, effort: "easy" as const },
   ],
 };
+const rampWorkout = {
+  name: "Ramp ride",
+  seconds: 8,
+  steps: [
+    { name: "Build", seconds: 4, watts: 100, endWatts: 200, effort: "hard" as const },
+    { name: "Recover", seconds: 4, watts: 80, effort: "easy" as const },
+  ],
+};
 
 describe("workout plans", () => {
   it("adds up to the chosen duration, including all five efforts", () => {
@@ -187,12 +195,27 @@ describe("ride recovery", () => {
     first.ride.restore(shortWorkout, checkpoint({ measuredSeconds: undefined }));
     expect(first.ride.averagePower).toBe(100);
     expect(first.ride.record().measuredSeconds).toBe(2);
+    expect(first.ride.intensity).toBe(100);
+    expect(first.ride.target).toBe(120);
     const second = await setup();
     second.ride.restore(
       shortWorkout,
       checkpoint({ averagePower: 0, workKj: 0, measuredSeconds: undefined }),
     );
     expect(second.ride.averagePower).toBe(0);
+  });
+  it("restores intensity and the interpolated ramp target without sending hardware commands", async () => {
+    const { ride, trainer, transport } = await setup();
+    ride.restore(rampWorkout, checkpoint({ name: rampWorkout.name, intensity: 120 }), 10);
+    expect(ride.intensity).toBe(120);
+    expect(ride.target).toBe(192);
+    expect(ride.controlTarget).toBe(192);
+    expect(ride.status).toBe("paused");
+    expect(transport.commandHistory).toEqual([]);
+    const power = vi.spyOn(trainer, "setTargetPower");
+    await ride.resume();
+    expect(power).toHaveBeenCalledWith(192);
+    expect(ride.record().intensity).toBe(120);
   });
   it("rejects completed, overrun, incompatible and corrupted checkpoints without changing the ride", async () => {
     const { ride, transport } = await setup();
@@ -205,6 +228,13 @@ describe("ride recovery", () => {
       { workKj: NaN },
       { measuredSeconds: 3 },
       { measuredSeconds: 0 },
+      { intensity: NaN },
+      { intensity: Infinity },
+      { intensity: 110.5 },
+      { intensity: 49 },
+      { intensity: 151 },
+      { intensity: 110, controlMode: "resistance" },
+      { intensity: 90, controlMode: "terrain" },
       { samples: [{ seconds: 3, watts: 100, cadence: 80, speed: 36, target: 60 }] },
     ];
     for (const override of invalid)
@@ -213,6 +243,10 @@ describe("ride recovery", () => {
     expect(() => ride.restore(shortWorkout, checkpoint(), NaN)).toThrow();
     expect(ride.status).toBe("ready");
     expect(ride.elapsed).toBe(0);
+    expect(ride.intensity).toBe(100);
+    expect(ride.target).toBe(0);
+    expect(ride.workout).toBeUndefined();
+    expect(ride.samples).toEqual([]);
     expect(transport.commandHistory).toEqual([]);
   });
   it("can end while restored control acquisition is pending without issuing Start", async () => {
@@ -245,6 +279,159 @@ describe("ride recovery", () => {
     }
     expect(ride.status).toBe("paused");
     expect(ride.error).toContain("No fresh trainer data");
+  });
+});
+
+describe("workout-wide ride intensity", () => {
+  it("scales every interval, preserves the workout, and records measured power unchanged", async () => {
+    const { ride, tick } = await setup();
+    const original = structuredClone(shortWorkout);
+    await ride.start(shortWorkout);
+    expect(ride.intensity).toBe(100);
+    await ride.adjustIntensity(20);
+    expect(ride.target).toBe(72);
+    await tick(2, { instantaneousPowerWatts: 81 });
+    expect(ride.target).toBe(144);
+    await tick(1, { instantaneousPowerWatts: 81 });
+    expect(ride.samples.at(-1)).toMatchObject({ watts: 81, target: 144 });
+    expect(ride.averagePower).toBe(81);
+    await tick(1);
+    expect(ride.target).toBe(60);
+    expect(ride.record().intensity).toBe(120);
+    expect(shortWorkout).toEqual(original);
+  });
+
+  it("scales interpolated ramp power at each tick and retains intensity in later steps", async () => {
+    const { ride, tick } = await setup();
+    await ride.start(rampWorkout);
+    await ride.adjustIntensity(-20);
+    expect(ride.target).toBe(80);
+    await tick(1);
+    expect(ride.target).toBe(100);
+    await tick(1);
+    expect(ride.target).toBe(120);
+    await tick(2);
+    expect(ride.target).toBe(64);
+  });
+
+  it("clamps and rounds intensity independently of the trainer power grid", async () => {
+    const { ride, trainer } = await setup();
+    const capabilities = trainer.capabilities.current;
+    if (!capabilities) throw new Error("Missing trainer capabilities.");
+    capabilities.powerRange = { minimum: 25, maximum: 248, increment: 10 };
+    await ride.start(createWorkout("free", 30, 200));
+    await ride.adjustIntensity(1000);
+    expect(ride.intensity).toBe(150);
+    expect(ride.target).toBe(245);
+    const power = vi.spyOn(trainer, "setTargetPower");
+    await ride.adjustIntensity(1);
+    await ride.adjustIntensity(NaN);
+    await ride.adjustIntensity(Infinity);
+    await ride.adjustIntensity(-Infinity);
+    expect(power).not.toHaveBeenCalled();
+    await ride.adjustIntensity(-1000);
+    expect(ride.intensity).toBe(50);
+    expect(ride.target).toBe(105);
+    await ride.adjustIntensity(5.6);
+    expect(ride.intensity).toBe(56);
+    expect(ride.target).toBe(115);
+  });
+
+  it("updates a paused target without hardware commands and applies it on resume", async () => {
+    const { ride, trainer } = await setup();
+    await ride.start(shortWorkout);
+    await ride.pause();
+    const power = vi.spyOn(trainer, "setTargetPower");
+    await ride.adjustIntensity(10);
+    expect(ride.target).toBe(66);
+    await ride.skipInterval();
+    expect(ride.target).toBe(132);
+    expect(ride.controlTarget).toBe(132);
+    expect(power).not.toHaveBeenCalled();
+    await ride.resume();
+    expect(power).toHaveBeenCalledExactlyOnceWith(132);
+  });
+
+  it("retains physical watt adjustment semantics after intensity has changed", async () => {
+    const { ride, trainer } = await setup();
+    const capabilities = trainer.capabilities.current;
+    if (!capabilities) throw new Error("Missing trainer capabilities.");
+    capabilities.powerRange = { minimum: 25, maximum: 248, increment: 10 };
+    await ride.start(createWorkout("free", 30, 100));
+    await ride.adjustIntensity(20);
+    expect(ride.target).toBe(125);
+    await ride.adjust(5);
+    expect(ride.target).toBe(135);
+    await ride.pause();
+    await ride.adjust(-5);
+    expect(ride.target).toBe(125);
+    await ride.resume();
+    expect(ride.target).toBe(125);
+    await ride.adjust(1000);
+    expect(ride.target).toBe(245);
+  });
+
+  it.each(["resistance", "terrain"] as const)(
+    "ignores intensity changes for %s control",
+    async (controlMode) => {
+      const { ride, transport } = await setup();
+      await ride.start(shortWorkout, { controlMode });
+      const commands = [...transport.commandHistory];
+      await ride.adjustIntensity(10);
+      expect(ride.intensity).toBe(100);
+      expect(ride.record().intensity).toBe(100);
+      expect(transport.commandHistory).toEqual(commands);
+      await ride.pause();
+      await ride.adjustIntensity(-10);
+      expect(ride.intensity).toBe(100);
+    },
+  );
+
+  it("ignores intensity changes before starting and after finishing", async () => {
+    const { ride, transport } = await setup();
+    await ride.adjustIntensity(10);
+    expect(ride.intensity).toBe(100);
+    expect(transport.commandHistory).toEqual([]);
+    await ride.start(shortWorkout);
+    await ride.finish();
+    const commands = [...transport.commandHistory];
+    await ride.adjustIntensity(10);
+    expect(ride.intensity).toBe(100);
+    expect(transport.commandHistory).toEqual(commands);
+  });
+
+  it("ignores busy changes and lets Stop win over a pending intensity command", async () => {
+    const { ride, transport } = await setup(25);
+    const start = ride.start(shortWorkout);
+    await ride.adjustIntensity(10);
+    expect(ride.intensity).toBe(100);
+    await vi.advanceTimersByTimeAsync(100);
+    await start;
+    const adjustment = ride.adjustIntensity(10);
+    expect(ride.busy).toBe(true);
+    expect(ride.target).toBe(60);
+    await ride.adjustIntensity(10);
+    expect(ride.intensity).toBe(110);
+    const stop = ride.finish();
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.all([adjustment, stop]);
+    expect(transport.commandHistory).toEqual([0x00, 0x05, 0x07, 0x05, 0x08]);
+    expect(ride.status).toBe("finished");
+    expect(ride.target).toBe(60);
+    expect(ride.busy).toBe(false);
+  });
+
+  it("stops and interrupts after a rejected intensity target without claiming acknowledgement", async () => {
+    const { ride, trainer } = await setup();
+    await ride.start(shortWorkout);
+    vi.spyOn(trainer, "setTargetPower").mockRejectedValueOnce(new Error("Power command rejected"));
+    await ride.adjustIntensity(10);
+    expect(ride.status).toBe("interrupted");
+    expect(ride.error).toContain("Power command rejected");
+    expect(trainer.activity.current).toBe("idle");
+    expect(ride.target).toBe(60);
+    await ride.adjustIntensity(10);
+    expect(ride.intensity).toBe(110);
   });
 });
 
