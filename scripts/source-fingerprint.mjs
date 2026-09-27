@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 const RUNTIME_SOURCE_ROOTS = [join("packages", "ftms", "src"), join("apps", "trainer-lab", "src")];
@@ -7,6 +7,7 @@ const BUILD_INPUTS = [
   "tsconfig.base.json",
   "packages/ftms/tsconfig.json",
   "apps/trainer-lab/vite.config.ts",
+  "apps/trainer-lab/index.html",
 ];
 const WORKSPACE_MANIFESTS = ["packages/ftms/package.json", "apps/trainer-lab/package.json"];
 
@@ -54,6 +55,10 @@ export function computeRuntimeFingerprint(workspaceRoot) {
     }
   }
   for (const path of BUILD_INPUTS) add(path, readFileSync(join(workspaceRoot, path), "utf8"));
+  const labEntry = "apps/trainer-lab/lab.html";
+  if (existsSync(join(workspaceRoot, labEntry))) {
+    add(labEntry, readFileSync(join(workspaceRoot, labEntry), "utf8"));
+  }
 
   const manifests = WORKSPACE_MANIFESTS.map((path) => [path, readJson(workspaceRoot, path)]);
   const workspaceNames = new Set(manifests.map(([, manifest]) => manifest.name));

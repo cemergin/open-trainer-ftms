@@ -98,6 +98,36 @@ function manuallyAcknowledgedTrainer(): {
 }
 
 describe("FtmsTrainer with the simulated transport", () => {
+  it("does not revoke acquired control from a quarantined late command rejection", async () => {
+    vi.useFakeTimers();
+    const { trainer, notify } = manuallyAcknowledgedTrainer();
+    try {
+      await trainer.connect();
+      const power = expect(trainer.setTargetPower(100)).rejects.toMatchObject({
+        code: FTMS_ERROR_CODE.commandTimeout,
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await power;
+      const control = trainer.acquireControl();
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await control;
+      const responses = vi.fn();
+      trainer.controlResponses.subscribe(responses);
+
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x05, 0x05);
+
+      expect(trainer.control.current).toBe("owned");
+      expect(responses).not.toHaveBeenCalled();
+      const retry = trainer.setTargetPower(100);
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x05, 0x01);
+      await retry;
+      expect(trainer.control.current).toBe("owned");
+    } finally {
+      await trainer.disconnect();
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["stop", "pause", "reset"] as const)(
     "%s cancels an earlier queued Start",
     async (operation) => {
@@ -423,13 +453,66 @@ describe("FtmsTrainer with the simulated transport", () => {
   it("supports explicitly configured legacy FTMS 1.0 resistance encoding", async () => {
     const transport = new MockFtmsTransport({ resistanceControlFormat: "uint8" });
     const trainer = createTrainer(transport, { resistanceControlFormat: "uint8" });
-    await trainer.connect();
+    const capabilities = await trainer.connect();
+    expect(capabilities.resistanceRange).toEqual({ minimum: 0, maximum: 20, increment: 1 });
+    expect((await transport.read(FTMS_UUIDS.supportedResistanceRange)).byteLength).toBe(3);
     await trainer.acquireControl();
 
-    await expect(trainer.setResistanceLevel(12.5)).resolves.toMatchObject({
+    await expect(trainer.setResistanceLevel(12.5)).rejects.toBeInstanceOf(FtmsRangeError);
+    await expect(trainer.setResistanceLevel(12)).resolves.toMatchObject({
       requestOpcode: 0x04,
     });
     await trainer.disconnect();
+  });
+
+  it.each([
+    {
+      command: "sint16" as const,
+      range: Uint8Array.of(1, 21, 2),
+      expected: { minimum: 1, maximum: 21, increment: 2 },
+      target: 13,
+      payload: Uint8Array.of(0x04, 130, 0),
+    },
+    {
+      command: "uint8" as const,
+      range: Uint8Array.of(0, 0, 200, 0, 1, 0),
+      expected: { minimum: 0, maximum: 20, increment: 0.1 },
+      target: 12.5,
+      payload: Uint8Array.of(0x04, 125),
+    },
+  ])("discovers range independently of $command command encoding", async (testCase) => {
+    const transport = new MockFtmsTransport({ resistanceControlFormat: testCase.command });
+    const read = transport.read.bind(transport);
+    vi.spyOn(transport, "read").mockImplementation((uuid) =>
+      uuid === FTMS_UUIDS.supportedResistanceRange
+        ? Promise.resolve(new DataView(testCase.range.buffer))
+        : read(uuid),
+    );
+    const write = vi.spyOn(transport, "write");
+    const trainer = createTrainer(transport, { resistanceControlFormat: testCase.command });
+    try {
+      const capabilities = await trainer.connect();
+      expect(capabilities.resistanceRange).toEqual(testCase.expected);
+      await trainer.acquireControl();
+      await trainer.setResistanceLevel(testCase.target);
+      expect(write).toHaveBeenLastCalledWith(FTMS_UUIDS.controlPoint, testCase.payload);
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("rejects malformed resistance discovery in strict mode", async () => {
+    const transport = new MockFtmsTransport();
+    const read = transport.read.bind(transport);
+    vi.spyOn(transport, "read").mockImplementation((uuid) =>
+      uuid === FTMS_UUIDS.supportedResistanceRange
+        ? Promise.resolve(new DataView(new ArrayBuffer(4)))
+        : read(uuid),
+    );
+    const trainer = createTrainer(transport);
+    await expect(trainer.connect()).rejects.toMatchObject({ code: FTMS_ERROR_CODE.invalidPacket });
+    expect(transport.isConnected).toBe(false);
+    expect(trainer.capabilities.current).toBeNull();
   });
 
   it("fails closed when an advertised mandatory range cannot be read", async () => {

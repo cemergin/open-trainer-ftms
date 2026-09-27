@@ -57,15 +57,22 @@ export function assertReleaseReady(workspaceRoot, distTag) {
     readFileSync(join(workspaceRoot, "packages", "ftms", "package.json"), "utf8"),
   );
   const runtimeFingerprint = computeRuntimeFingerprint(workspaceRoot);
+  const reportsDirectory = resolve(workspaceRoot, "hardware", "reports");
+  const trustedReportsDirectory = join(realpathSync(workspaceRoot), "hardware", "reports");
+  if (!existsSync(reportsDirectory) || realpathSync(reportsDirectory) !== trustedReportsDirectory) {
+    throw new Error(
+      "Validated device reports are missing or outside hardware/reports in the workspace.",
+    );
+  }
 
   for (const device of compatibility.validatedDevices) {
     const relativeReport = normalize(device.report);
-    const reportsRoot = join(workspaceRoot, "hardware", "reports") + sep;
+    const reportsRoot = reportsDirectory + sep;
     const reportPath = resolve(workspaceRoot, relativeReport);
     if (
       !reportPath.startsWith(reportsRoot) ||
       !existsSync(reportPath) ||
-      !realpathSync(reportPath).startsWith(realpathSync(reportsRoot) + sep)
+      !realpathSync(reportPath).startsWith(trustedReportsDirectory + sep)
     ) {
       throw new Error(
         `Validated device report is missing or outside hardware/reports: ${device.report}`,

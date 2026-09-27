@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -48,6 +56,10 @@ function fixture(version = "0.2.0") {
     JSON.stringify({ extends: "../../tsconfig.base.json" }),
   );
   writeFileSync(join(root, "apps", "trainer-lab", "vite.config.ts"), "export default {};\n");
+  writeFileSync(
+    join(root, "apps", "trainer-lab", "index.html"),
+    '<button id="stop">Stop</button>\n',
+  );
   writeFileSync(
     join(root, "package-lock.json"),
     JSON.stringify({
@@ -278,4 +290,52 @@ test("manufacturer spelling case and padding cannot satisfy the two-manufacturer
   );
 
   assert.throws(() => assertReleaseReady(root, "latest"), /two trainer manufacturers/);
+});
+
+for (const directory of ["hardware/reports", "hardware"]) {
+  test(`a symlinked ${directory} directory cannot move evidence outside the workspace`, (context) => {
+    const root = fixture();
+    const outside = mkdtempSync(join(tmpdir(), "open-trainer-outside-evidence-"));
+    context.after(() => {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    });
+    const device = addDevice(root);
+    writeFileSync(
+      join(root, "hardware", "compatibility.json"),
+      JSON.stringify({ schemaVersion: 1, validatedDevices: [device] }),
+    );
+    const relocated = join(outside, "relocated");
+    renameSync(join(root, directory), relocated);
+    symlinkSync(relocated, join(root, directory));
+
+    assert.throws(() => assertReleaseReady(root, "latest"), /outside hardware\/reports/);
+  });
+}
+
+test("entry markup changes invalidate hardware evidence, including an optional Lab entry", (context) => {
+  const root = fixture();
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const device = addDevice(root);
+  writeFileSync(
+    join(root, "hardware", "compatibility.json"),
+    JSON.stringify({ schemaVersion: 1, validatedDevices: [device] }),
+  );
+  const entry = join(root, "apps", "trainer-lab", "index.html");
+  const original = readFileSync(entry, "utf8");
+  writeFileSync(entry, '<button id="stop" disabled>Stop</button>\n');
+  assert.throws(() => assertReleaseReady(root, "latest"), /different library.*runtime/);
+  writeFileSync(entry, original);
+  assert.match(assertReleaseReady(root, "latest"), /Validated 1/);
+
+  const labEntry = join(root, "apps", "trainer-lab", "lab.html");
+  writeFileSync(labEntry, '<button id="lab-stop">Stop</button>\n');
+  assert.throws(() => assertReleaseReady(root, "latest"), /different library.*runtime/);
+  addDevice(root);
+  assert.match(assertReleaseReady(root, "latest"), /Validated 1/);
+  writeFileSync(labEntry, '<button id="lab-stop" disabled>Stop</button>\n');
+  assert.throws(() => assertReleaseReady(root, "latest"), /different library.*runtime/);
+  addDevice(root);
+  rmSync(labEntry);
+  assert.throws(() => assertReleaseReady(root, "latest"), /different library.*runtime/);
 });

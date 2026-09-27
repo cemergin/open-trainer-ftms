@@ -91,6 +91,9 @@ export class MockFtmsTransport implements FtmsTransport {
     }
 
     if (characteristic === FTMS_UUIDS.supportedResistanceRange) {
+      if (this.options.resistanceControlFormat === "uint8") {
+        return dataView(Uint8Array.of(0, 20, 1));
+      }
       const bytes = new Uint8Array(6);
       const view = new DataView(bytes.buffer);
       view.setInt16(0, 0, true);

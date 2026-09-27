@@ -112,13 +112,25 @@ describe("feature and range parsing", () => {
     });
   });
 
+  it("decodes three UINT8 resistance-range fields at unit resolution", () => {
+    const bytes = Uint8Array.of(0xff, 5, 255, 10, 0xff);
+    expect(parseSupportedResistanceRange(new DataView(bytes.buffer, 1, 3))).toEqual({
+      minimum: 5,
+      maximum: 255,
+      increment: 10,
+    });
+  });
+
   it("rejects non-conformant fixed-length characteristics", () => {
     expect(() => parseCapabilities(new DataView(new ArrayBuffer(9)))).toThrow(/must be 8 bytes/);
     expect(() => parseSupportedPowerRange(new DataView(new ArrayBuffer(5)))).toThrow(
       /must be 6 bytes/,
     );
-    expect(() => parseSupportedResistanceRange(new DataView(new ArrayBuffer(3)))).toThrow(
-      /must be 6 bytes/,
+  });
+
+  it.each([0, 1, 2, 4, 5, 7])("rejects malformed %i-byte resistance ranges", (length) => {
+    expect(() => parseSupportedResistanceRange(new DataView(new ArrayBuffer(length)))).toThrow(
+      /must be 3 or 6 bytes/,
     );
   });
 });

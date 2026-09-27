@@ -97,6 +97,8 @@ const trainer = createWebBluetoothTrainer(
 );
 ```
 
+Resistance-range discovery accepts exact three-byte UINT8 fields in whole levels or a six-byte layout with signed minimum/maximum and an unsigned increment, all in tenths. Discovery is independent of the selected command format, which still requires explicit configuration for a confirmed legacy device.
+
 Discovery is strict by default: if a trainer advertises a target feature but its required range or Machine Status cannot be configured, `connect()` rejects. `strictProtocol: false` is available only as an explicit interoperability escape hatch and emits the discovery failures on `errors`.
 
 ## Implemented

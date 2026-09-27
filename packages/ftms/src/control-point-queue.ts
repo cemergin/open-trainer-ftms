@@ -246,11 +246,11 @@ export class ControlPointQueue {
       return;
     }
 
-    this.#responseSource.emit(response);
     if (this.#desynchronizedOpcodes.delete(response.requestOpcode)) {
       this.#pump();
       return;
     }
+    this.#responseSource.emit(response);
     if (!this.#pending || this.#pending.opcode !== response.requestOpcode) return;
 
     const pending = this.#pending;

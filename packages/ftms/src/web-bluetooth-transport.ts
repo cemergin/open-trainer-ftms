@@ -101,7 +101,11 @@ export class WebBluetoothFtmsTransport implements FtmsTransport {
       this.#characteristics.clear();
       this.#generation += 1;
       this.#operations.close("Bluetooth connection setup failed.");
-      if (device?.gatt?.connected) device.gatt.disconnect();
+      try {
+        if (device?.gatt?.connected) device.gatt.disconnect();
+      } catch {
+        // Rollback must not replace the connection setup error reported to callers.
+      }
       throw normalizeFtmsError(
         error,
         "Connecting to the trainer's FTMS service failed.",

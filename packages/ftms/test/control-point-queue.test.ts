@@ -60,6 +60,8 @@ describe("ControlPointQueue", () => {
       await transport.connect();
       const queue = new ControlPointQueue(transport, 10);
       await queue.open();
+      const responses = vi.fn();
+      queue.responses.subscribe(responses);
 
       const first = queue.execute(targetPowerCommand(100));
       const firstRejection = expect(first).rejects.toMatchObject({
@@ -73,10 +75,12 @@ describe("ControlPointQueue", () => {
       });
 
       await vi.advanceTimersByTimeAsync(90);
+      expect(responses).not.toHaveBeenCalled();
       options.controlResponseDelayMs = 5;
       const third = queue.execute(targetPowerCommand(120));
       await vi.advanceTimersByTimeAsync(5);
       await expect(third).resolves.toMatchObject({ requestOpcode: 0x05 });
+      expect(responses).toHaveBeenCalledOnce();
       queue.close();
       await transport.disconnect();
     } finally {

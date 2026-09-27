@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FTMS_ERROR_CODE } from "../src/errors.js";
+import { FTMS_ERROR_CODE, FtmsStateError } from "../src/errors.js";
 import { FTMS_UUIDS } from "../src/uuids.js";
 import { WebBluetoothFtmsTransport } from "../src/web-bluetooth-transport.js";
 import { createWebBluetoothTrainer } from "../src/web-bluetooth.js";
@@ -313,6 +313,26 @@ describe("WebBluetoothFtmsTransport", () => {
     expect(device.disconnectListeners).toBe(0);
     device.dispatchEvent(new Event("gattserverdisconnected"));
     expect(disconnectEvents).toBe(0);
+  });
+
+  it("preserves the typed setup error when platform rollback also fails", async () => {
+    const { device, transport } = createFixture();
+    const setupError = new FtmsStateError(
+      "Service discovery was cancelled.",
+      FTMS_ERROR_CODE.operationClosed,
+    );
+    device.gatt.serviceFailure = setupError;
+    device.gatt.disconnectFailure = new Error("platform rollback failed");
+
+    await expect(transport.connect()).rejects.toBe(setupError);
+
+    expect(transport.isConnected).toBe(false);
+    expect(device.disconnectListeners).toBe(0);
+    device.gatt.serviceFailure = undefined;
+    device.gatt.disconnectFailure = undefined;
+    await transport.connect();
+    expect(transport.isConnected).toBe(true);
+    await transport.disconnect();
   });
 
   it("uses the browser picker with an FTMS filter and supports a name-prefix filter", async () => {

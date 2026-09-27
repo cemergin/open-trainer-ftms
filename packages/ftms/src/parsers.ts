@@ -149,9 +149,16 @@ export function parseSupportedPowerRange(view: DataView): ValueRange {
 }
 
 export function parseSupportedResistanceRange(view: DataView): ValueRange {
+  if (view.byteLength === 3) {
+    return {
+      minimum: view.getUint8(0),
+      maximum: view.getUint8(1),
+      increment: view.getUint8(2),
+    };
+  }
   if (view.byteLength !== 6) {
     throw new FtmsProtocolError(
-      `Supported Resistance Level Range must be 6 bytes; got ${view.byteLength}.`,
+      `Supported Resistance Level Range must be 3 or 6 bytes; got ${view.byteLength}.`,
     );
   }
 
