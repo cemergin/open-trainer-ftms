@@ -152,7 +152,13 @@ async function act(operation: () => void | Promise<void>): Promise<void> {
   render();
 }
 
+function hasUnresolvedRecovery(): boolean {
+  return recovery !== null && recovery.record.startedAt !== ride?.startedAt;
+}
+
 function actionHint(status: RideStatus, active: boolean, connected: boolean): string {
+  if (hasUnresolvedRecovery())
+    return "Recover your unfinished ride, or keep it as a past ride before starting another.";
   if (status === "interrupted") return "Disconnect and reconnect before your next ride.";
   if (status === "finished") {
     if (!ride?.elapsed) return "Ready for another try.";
@@ -281,6 +287,7 @@ function render(): void {
   ui.start.hidden = (active && status !== "paused") || ended;
   ui.start.disabled =
     !connected ||
+    hasUnresolvedRecovery() ||
     !trainer?.capabilities.current?.supportsPowerTarget ||
     Boolean(ride?.busy) ||
     !ui.watts.checkValidity();
@@ -386,6 +393,7 @@ function renderProfile(
 function persistRide(force = false): void {
   if (
     !ride?.startedAt ||
+    hasUnresolvedRecovery() ||
     !ride.workout ||
     ride.elapsed <= 0 ||
     (!force && ride.elapsed - savedAt < 5 && savedStatus === ride.status)
@@ -485,7 +493,7 @@ ui.disconnect.addEventListener(
 );
 ui.start.addEventListener("click", () => {
   const currentRide = ride;
-  if (!currentRide || !ui.watts.reportValidity()) return;
+  if (!currentRide || hasUnresolvedRecovery() || !ui.watts.reportValidity()) return;
   const beginning = currentRide.status === "ready";
   void act(() =>
     currentRide.status === "paused" ? currentRide.resume() : currentRide.start(selectedWorkout()),
