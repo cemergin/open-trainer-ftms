@@ -29,7 +29,8 @@ Keep the existing dark palette, shared tokens, large ride controls, and restrain
 ## Delivered and verified
 
 - Implemented the six workstreams above, including visible screen wake-lock status, retry backoff, and reacquisition after returning to the tab.
-- 243 library tests, 202 app tests, and 12 release-gate tests pass. Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
+- 243 library tests, 209 app tests, and 12 release-gate tests pass. Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
+- Added the live power/heart-rate chart with a two-minute active-time window, labelled scales, an ERG target trace, pause/recovery support, and missing-data gaps.
 - Internal-browser checks exercised terrain adjustments, skip/extend, pause/resume, closing/reopening recovery, saved analysis, a custom ramp/repeated workout, external demo heart rate, Lab cadence/spin-down diagnostics, offline replay, and fault handling.
 - Independent reviews fixed stop/calibration ordering, interleaved replay notifications, fault occurrence counting, stale sensor cleanup, resistance rounding, source provenance/recovery, and backup overwrite risks.
 - Codeflow quality review and its narrow cleanup pass completed. Complexity and erosion were measured with installed parsers. CRAP remains unavailable because its coverage adapter rejects Vitest's null function-end columns; no coverage estimates or thresholds were substituted. Verbosity tooling was unavailable.

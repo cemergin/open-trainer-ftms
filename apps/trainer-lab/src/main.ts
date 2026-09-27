@@ -29,9 +29,11 @@ import {
 import { renderFeedback } from "./ui/feedback";
 import { mountWorkoutPicker } from "./ui/workout-picker";
 import { renderRideHistory } from "./ui/history";
+import { renderLiveChart } from "./ui/live-chart";
 import { byId } from "./ui/dom";
 import "./style.css";
 import "./training.css";
+import "./ui/live-chart.css";
 
 const ui = {
   connect: byId("connect-real", HTMLButtonElement),
@@ -420,6 +422,7 @@ function render(): void {
         : `Your warm-up starts gently at ${trainerWatts(currentStep(workout, 0).step.watts, trainer?.capabilities.current?.powerRange)} W.`,
   );
   renderProfile(workout, stage.index, workoutElapsed, active);
+  renderLiveChart(ride?.samples ?? [], elapsed, controlMode, status);
   text("distance", `${(ride?.distanceKm ?? 0).toFixed(2)} km`);
   text("average", `${ride?.averagePower ?? "—"} W`);
   text("work", `${Math.round(ride?.workKj ?? 0)} kJ`);
