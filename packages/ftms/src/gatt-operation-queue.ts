@@ -14,7 +14,14 @@ export class AsyncOperationQueue {
           FTMS_ERROR_CODE.operationClosed,
         );
       }
-      return operation();
+      const value = await operation();
+      if (generation !== this.#generation) {
+        throw new FtmsStateError(
+          "Bluetooth operation belongs to a previous connection.",
+          FTMS_ERROR_CODE.operationClosed,
+        );
+      }
+      return value;
     });
     this.#tail = result.then(
       () => undefined,

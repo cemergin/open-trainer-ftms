@@ -6,6 +6,7 @@ on:
       - main
       - master
       - codex/dependency-updates
+      - codex/production-hardening
 
 permissions:
   contents: read

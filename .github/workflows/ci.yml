@@ -77,7 +77,9 @@ jobs:
 
       - name: Require a changeset for publishable package changes
         if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
-        run: npm run changeset:status -- --since="origin/${{ github.base_ref }}"
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: npm run changeset:status -- --since="origin/$BASE_BRANCH"
 
       - name: Check formatting
         run: npm run format:check
@@ -104,10 +106,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Node.js 20 runtime
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
 
@@ -116,13 +118,13 @@ jobs:
         run: node -p '"path=" + process.execPath' >> "$GITHUB_OUTPUT"
 
       - name: Use Node.js 24 build tools
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Verify packed library on Node.js 20
         env:

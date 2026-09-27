@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -62,7 +62,11 @@ export function assertReleaseReady(workspaceRoot, distTag) {
     const relativeReport = normalize(device.report);
     const reportsRoot = join(workspaceRoot, "hardware", "reports") + sep;
     const reportPath = resolve(workspaceRoot, relativeReport);
-    if (!reportPath.startsWith(reportsRoot) || !existsSync(reportPath)) {
+    if (
+      !reportPath.startsWith(reportsRoot) ||
+      !existsSync(reportPath) ||
+      !realpathSync(reportPath).startsWith(realpathSync(reportsRoot) + sep)
+    ) {
       throw new Error(
         `Validated device report is missing or outside hardware/reports: ${device.report}`,
       );
@@ -125,7 +129,7 @@ export function assertReleaseReady(workspaceRoot, distTag) {
 
   const major = Number.parseInt(packageJson.version.split(".")[0] ?? "0", 10);
   const manufacturers = new Set(
-    compatibility.validatedDevices.map((device) => device.manufacturer.toLowerCase()),
+    compatibility.validatedDevices.map((device) => device.manufacturer.trim().toLowerCase()),
   );
   if (major >= 1 && manufacturers.size < 2) {
     throw new Error(

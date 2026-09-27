@@ -59,7 +59,7 @@ describe("AsyncOperationQueue", () => {
     const current = queue.run(async () => 3);
     release?.();
 
-    await expect(first).resolves.toBe(1);
+    await expect(first).rejects.toMatchObject({ code: FTMS_ERROR_CODE.operationClosed });
     await expect(stale).rejects.toMatchObject({ code: FTMS_ERROR_CODE.operationClosed });
     await expect(current).resolves.toBe(3);
   });

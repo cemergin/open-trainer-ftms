@@ -7,7 +7,7 @@
     "build": "vite build",
     "dev": "vite",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "node ../../node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@open-trainer/ftms": "*"

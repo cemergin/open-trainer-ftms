@@ -118,6 +118,138 @@ describe("WebBluetoothFtmsTransport", () => {
     vi.unstubAllGlobals();
   });
 
+  it("reconnects after a disconnect requested during connection setup", async () => {
+    const { device, transport } = createFixture();
+    const service = await device.gatt.getPrimaryService();
+    let finish: ((value: BluetoothRemoteGATTService) => void) | undefined;
+    vi.spyOn(device.gatt, "getPrimaryService").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const initial = transport.connect();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const disconnect = transport.disconnect();
+    const reconnect = transport.connect();
+    finish?.(service);
+    await Promise.all([initial, disconnect, reconnect]);
+    expect(device.gatt.connectCount).toBe(2);
+    expect(transport.isConnected).toBe(true);
+    await transport.disconnect();
+  });
+
+  it("rejects service discovery completed after connection loss", async () => {
+    const { device, transport } = createFixture();
+    const service = await device.gatt.getPrimaryService();
+    let finish: ((value: BluetoothRemoteGATTService) => void) | undefined;
+    vi.spyOn(device.gatt, "getPrimaryService").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const connecting = expect(transport.connect()).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    device.gatt.connected = false;
+    device.dispatchEvent(new Event("gattserverdisconnected"));
+    finish?.(service);
+    await connecting;
+    expect(transport.isConnected).toBe(false);
+    await transport.connect();
+    expect(transport.isConnected).toBe(true);
+    await transport.disconnect();
+  });
+
+  it("rejects a read completed after reconnect instead of returning stale data", async () => {
+    const { characteristic, transport } = createFixture();
+    let finish: ((value: DataView) => void) | undefined;
+    vi.spyOn(characteristic, "readValue").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await transport.connect();
+    const read = expect(transport.read(FTMS_UUIDS.feature)).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await transport.disconnect();
+    await transport.connect();
+    finish?.(new DataView(Uint8Array.of(99).buffer));
+    await read;
+    expect((await transport.read(FTMS_UUIDS.feature)).getUint8(0)).toBe(1);
+    await transport.disconnect();
+  });
+
+  it("does not cache a characteristic discovered for an earlier connection", async () => {
+    const { device, transport } = createFixture();
+    const oldCharacteristic = new FakeCharacteristic();
+    const oldRead = vi.spyOn(oldCharacteristic, "readValue");
+    let finish: ((value: BluetoothRemoteGATTCharacteristic) => void) | undefined;
+    vi.spyOn(device.gatt, "getPrimaryService").mockResolvedValueOnce({
+      getCharacteristic: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    } as unknown as BluetoothRemoteGATTService);
+    await transport.connect();
+    const read = expect(transport.read(FTMS_UUIDS.feature)).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await transport.disconnect();
+    await transport.connect();
+    finish?.(oldCharacteristic as unknown as BluetoothRemoteGATTCharacteristic);
+    await read;
+    expect(oldRead).not.toHaveBeenCalled();
+    await transport.read(FTMS_UUIDS.feature);
+    expect(device.gatt.characteristicLookups).toBe(1);
+    await transport.disconnect();
+  });
+
+  it("releases a notification listener whose setup completes after disconnect", async () => {
+    const { characteristic, transport } = createFixture();
+    let finish: ((value: FakeCharacteristic) => void) | undefined;
+    vi.spyOn(characteristic, "startNotifications").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const remove = vi.spyOn(characteristic, "removeEventListener");
+    const listener = vi.fn();
+    await transport.connect();
+    const subscribing = expect(
+      transport.subscribe(FTMS_UUIDS.indoorBikeData, listener),
+    ).rejects.toMatchObject({ code: FTMS_ERROR_CODE.operationClosed });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await transport.disconnect();
+    finish?.(characteristic);
+    await subscribing;
+    characteristic.notify(Uint8Array.of(1));
+    expect(listener).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("detaches active notification listeners on link loss", async () => {
+    const { characteristic, device, transport } = createFixture();
+    const remove = vi.spyOn(characteristic, "removeEventListener");
+    const listener = vi.fn();
+    await transport.connect();
+    const unsubscribe = await transport.subscribe(FTMS_UUIDS.indoorBikeData, listener);
+    device.gatt.connected = false;
+    device.dispatchEvent(new Event("gattserverdisconnected"));
+    characteristic.notify(Uint8Array.of(1));
+    unsubscribe();
+    expect(listener).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledOnce();
+    expect(characteristic.stops).toBe(0);
+  });
+
   it("connects an injected device without invoking the browser picker", async () => {
     const { device, transport } = createFixture();
 

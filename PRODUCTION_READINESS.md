@@ -7,7 +7,7 @@ The repository separates software readiness from physical-hardware qualification
 - Strict TypeScript and type-aware ESLint.
 - Prettier formatting with a zero-diff check.
 - 95% statement, line, and function coverage; 80% branch coverage.
-- Node 20 and 22 verification plus Node 24 package verification.
+- Node 22 and 24 build verification, plus an installed-package runtime check on Node 20.
 - Clean `npm ci`, complete dependency-graph audit, package build, consumer compilation, `publint`, Are the Types Wrong, clean tarball installation, and runtime import smoke tests.
 - Pull requests that change the publishable package must include a Changeset; dependency installation in automation disables lifecycle scripts.
 - Immutable commit SHAs for GitHub Actions, dependency review, and Dependabot configuration.
@@ -27,7 +27,7 @@ Repository files cannot activate or prove these owner-level settings. They are a
 
 ## Enforced hardware gate
 
-`npm run release:check` fails until committed physical evidence satisfies [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The manual workflow applies this check to `latest`; `next` remains the explicitly experimental channel. Each report carries a deterministic SHA-256 fingerprint of the library and Trainer Lab runtime sources, so a behavior change invalidates old hardware evidence while test-only or declaration-only changes do not.
+`npm run release:check` fails until committed physical evidence satisfies [HARDWARE_VALIDATION.md](./HARDWARE_VALIDATION.md). The manual workflow applies this check to `latest`; `next` remains the explicitly experimental channel. Each report carries a deterministic SHA-256 fingerprint of the library and Trainer Lab runtime sources, build configuration, runtime package metadata, and locked dependency graph. Changes to these inputs invalidate old evidence; test-only, declaration-only, and workspace version-only changes do not.
 
 At the moment, `hardware/compatibility.json` contains no passing physical device. That means the software pipeline can be green while a production-channel release remains correctly blocked. The first intended qualification target is a Wahoo KICKR CORE on recorded firmware and browser versions. Follow the vendor-neutral [device integration guide](./DEVICE_INTEGRATION_GUIDE.md); Trainer Lab records the non-persistent live-session counters and exports the schema-validated evidence.
 

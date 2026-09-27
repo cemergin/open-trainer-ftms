@@ -92,6 +92,8 @@ export class FtmsTrainer implements Trainer {
   readonly #subscriptions: Unsubscribe[] = [];
   #connectPromise: Promise<TrainerCapabilities> | undefined;
   #disconnectPromise: Promise<void> | undefined;
+  #controlEpoch = 0;
+  #connectionEpoch = 0;
   readonly #options: Required<TrainerOptions>;
 
   constructor(
@@ -111,6 +113,7 @@ export class FtmsTrainer implements Trainer {
   }
 
   async connect(): Promise<TrainerCapabilities> {
+    if (this.#disconnectPromise) await this.#disconnectPromise;
     if (this.#connectPromise) return this.#connectPromise;
     const operation = this.#connectAfterDisconnect();
     this.#connectPromise = operation;
@@ -127,17 +130,23 @@ export class FtmsTrainer implements Trainer {
       return this.#capabilitySource.current;
     }
     this.#connectionSource.setIfChanged("connecting");
+    const connectionEpoch = this.#connectionEpoch;
 
     try {
       await this.transport.connect();
+      this.#assertConnection(connectionEpoch);
       this.#subscriptions.push(
         this.transport.onDisconnect(() => this.#handleDisconnect("Bluetooth connection lost.")),
       );
 
       this.#queue = new ControlPointQueue(this.transport, this.#options.commandTimeoutMs);
       await this.#queue.open();
+      this.#assertConnection(connectionEpoch);
       this.#subscriptions.push(
-        this.#queue.responses.subscribe((response) => this.#controlResponseSource.emit(response)),
+        this.#queue.responses.subscribe((response) => {
+          if (response.resultCode === CONTROL_RESULT.controlNotPermitted) this.#revokeControl();
+          this.#controlResponseSource.emit(response);
+        }),
         this.#queue.errors.subscribe((error) => this.#errorSource.emit(error)),
       );
 
@@ -156,11 +165,12 @@ export class FtmsTrainer implements Trainer {
         );
         if (resistanceRange) capabilities.resistanceRange = resistanceRange;
       }
+      this.#assertConnection(connectionEpoch);
       this.#capabilitySource.set(capabilities);
 
       if (this.#options.autoStartTelemetry) {
         this.#subscriptions.push(
-          await this.transport.subscribe(FTMS_UUIDS.indoorBikeData, (value) => {
+          await this.#subscribe(FTMS_UUIDS.indoorBikeData, connectionEpoch, (value) => {
             try {
               this.#telemetrySource.set(parseIndoorBikeData(value));
             } catch (error) {
@@ -172,20 +182,20 @@ export class FtmsTrainer implements Trainer {
 
       try {
         this.#subscriptions.push(
-          await this.transport.subscribe(FTMS_UUIDS.machineStatus, (value) => {
+          await this.#subscribe(FTMS_UUIDS.machineStatus, connectionEpoch, (value) => {
             const bytes = new Uint8Array(
               value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength),
             );
-            this.#machineStatusSource.emit(bytes);
             try {
               const status = parseMachineStatus(value);
-              this.#machineStatusEventSource.emit(status);
               this.#applyMachineStatus(status);
+              this.#machineStatusEventSource.emit(status);
             } catch (error) {
               this.#errorSource.emit(
                 normalizeFtmsError(error, "Parsing Fitness Machine Status failed."),
               );
             }
+            this.#machineStatusSource.emit(bytes);
           }),
         );
       } catch (error) {
@@ -198,6 +208,7 @@ export class FtmsTrainer implements Trainer {
         this.#errorSource.emit(normalized);
       }
 
+      this.#assertConnection(connectionEpoch);
       this.#connectionSource.setIfChanged("ready");
       return capabilities;
     } catch (error) {
@@ -254,41 +265,46 @@ export class FtmsTrainer implements Trainer {
   }
 
   async acquireControl(): Promise<ControlPointResponse> {
+    const controlEpoch = this.#controlEpoch;
     this.#controlSource.setIfChanged("requesting");
     try {
-      const response = await this.#command(requestControlCommand());
-      this.#controlSource.setIfChanged("owned");
-      return response;
+      return await this.#command(requestControlCommand(), {}, () => {
+        this.#controlSource.setIfChanged("owned");
+      });
     } catch (error) {
-      this.#controlSource.setIfChanged("unavailable");
+      if (controlEpoch === this.#controlEpoch && this.#controlSource.current === "requesting") {
+        this.#controlSource.setIfChanged("unavailable");
+      }
       throw error;
     }
   }
 
   async start(): Promise<ControlPointResponse> {
-    const response = await this.#command(startCommand());
-    this.#activitySource.setIfChanged("running");
-    return response;
+    return this.#command(startCommand(), { coalesceKey: "start" }, () => {
+      this.#activitySource.setIfChanged("running");
+    });
   }
 
   async pause(): Promise<ControlPointResponse> {
-    const response = await this.#command(pauseCommand(), {
-      cancelQueuedKeys: ["setpoint"],
-      priority: "safety",
-    });
-    this.#activitySource.setIfChanged("paused");
-    return response;
+    return this.#command(
+      pauseCommand(),
+      { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+      () => {
+        this.#activitySource.setIfChanged("paused");
+      },
+    );
   }
 
   async stop(): Promise<ControlPointResponse> {
     this.#activitySource.setIfChanged("stopping");
     try {
-      const response = await this.#command(stopCommand(), {
-        cancelQueuedKeys: ["setpoint"],
-        priority: "safety",
-      });
-      this.#activitySource.setIfChanged("idle");
-      return response;
+      return await this.#command(
+        stopCommand(),
+        { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+        () => {
+          this.#activitySource.setIfChanged("idle");
+        },
+      );
     } catch (error) {
       this.#activitySource.setIfChanged("idle");
       this.#errorSource.emit(error instanceof Error ? error : new FtmsError(String(error)));
@@ -297,13 +313,14 @@ export class FtmsTrainer implements Trainer {
   }
 
   async reset(): Promise<ControlPointResponse> {
-    const response = await this.#command(resetCommand(), {
-      cancelQueuedKeys: ["setpoint"],
-      priority: "safety",
-    });
-    this.#controlSource.setIfChanged("unavailable");
-    this.#activitySource.setIfChanged("idle");
-    return response;
+    return this.#command(
+      resetCommand(),
+      { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+      () => {
+        this.#controlSource.setIfChanged("unavailable");
+        this.#activitySource.setIfChanged("idle");
+      },
+    );
   }
 
   async setTargetPower(watts: number): Promise<ControlPointResponse> {
@@ -338,6 +355,7 @@ export class FtmsTrainer implements Trainer {
   async #command(
     command: Uint8Array,
     options: ControlPointExecutionOptions = {},
+    onSuccess?: () => void,
   ): Promise<ControlPointResponse> {
     if (!this.transport.isConnected || !this.#queue) {
       throw new FtmsStateError(
@@ -345,6 +363,7 @@ export class FtmsTrainer implements Trainer {
         FTMS_ERROR_CODE.notConnected,
       );
     }
+    const controlEpoch = this.#controlEpoch;
     const response = await this.#queue.execute(command, options);
     if (response.resultCode !== CONTROL_RESULT.success) {
       const label =
@@ -354,7 +373,46 @@ export class FtmsTrainer implements Trainer {
         response,
       );
     }
+    if (controlEpoch !== this.#controlEpoch) {
+      throw new FtmsStateError("Trainer control was lost before the command completed.");
+    }
+    onSuccess?.();
     return response;
+  }
+
+  #revokeControl(): void {
+    this.#controlEpoch += 1;
+    this.#queue?.cancelQueued(
+      new FtmsStateError("Trainer control was lost before the command completed."),
+    );
+    this.#controlSource.setIfChanged("revoked");
+    this.#activitySource.setIfChanged("idle");
+  }
+
+  #assertConnection(epoch: number): void {
+    if (epoch !== this.#connectionEpoch || !this.transport.isConnected) {
+      throw new FtmsStateError(
+        "Trainer disconnected during connection setup.",
+        FTMS_ERROR_CODE.operationClosed,
+      );
+    }
+  }
+
+  async #subscribe(
+    characteristic: number,
+    epoch: number,
+    listener: (value: DataView) => void,
+  ): Promise<Unsubscribe> {
+    const unsubscribe = await this.transport.subscribe(characteristic, (value) => {
+      if (epoch === this.#connectionEpoch) listener(value);
+    });
+    try {
+      this.#assertConnection(epoch);
+    } catch (error) {
+      unsubscribe();
+      throw error;
+    }
+    return unsubscribe;
   }
 
   #requireCapabilities(): TrainerCapabilities {
@@ -420,8 +478,7 @@ export class FtmsTrainer implements Trainer {
         this.#activitySource.setIfChanged("running");
         break;
       case "control-permission-lost":
-        this.#controlSource.setIfChanged("revoked");
-        this.#activitySource.setIfChanged("idle");
+        this.#revokeControl();
         break;
       case "target-speed-changed":
       case "target-inclination-changed":
@@ -445,6 +502,8 @@ export class FtmsTrainer implements Trainer {
   }
 
   #handleDisconnect(reason: string): void {
+    this.#controlEpoch += 1;
+    this.#connectionEpoch += 1;
     this.#queue?.close(reason);
     this.#queue = undefined;
     this.#unsubscribeAll();
@@ -456,6 +515,8 @@ export class FtmsTrainer implements Trainer {
   }
 
   async #cleanup(disconnectTransport: boolean): Promise<void> {
+    this.#controlEpoch += 1;
+    this.#connectionEpoch += 1;
     this.#queue?.close();
     this.#queue = undefined;
     this.#unsubscribeAll();

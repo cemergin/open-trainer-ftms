@@ -6,6 +6,7 @@ import {
   buildQualificationReport,
   createEmptyQualificationChecks,
   QUALIFICATION_CHECKS,
+  QualificationTracker,
   qualificationBlockers,
   qualificationReportFilename,
   type QualificationReadinessInput,
@@ -93,5 +94,34 @@ describe("physical qualification reports", () => {
     expect(qualificationReportFilename(completeInput().metadata)).toBe(
       "wahoo-kickr-core-1-5-36.json",
     );
+  });
+});
+
+describe("physical evidence isolation", () => {
+  it("accumulates reconnects for one trainer and clears evidence when a different trainer connects", () => {
+    const tracker = new QualificationTracker(completeInput().metadata);
+    tracker.connected(true, "KICKR CORE");
+    tracker.connected(true, "KICKR CORE");
+    tracker.input.checks.stop = { passed: true, notes: "Observed resistance release" };
+    tracker.input.session.telemetrySamples = 50;
+    expect(tracker.input.session.realConnectionCount).toBe(2);
+    tracker.connected(true, "Another trainer");
+    expect(tracker.input.session).toMatchObject({ realConnectionCount: 1, telemetrySamples: 0 });
+    expect(tracker.input.checks.stop).toEqual({
+      passed: false,
+      notes: "Observed resistance release",
+    });
+  });
+
+  it("never carries physical passes or counters into a simulator session", () => {
+    const tracker = new QualificationTracker(completeInput().metadata);
+    tracker.connected(true, "KICKR CORE");
+    tracker.input.checks.stop.passed = true;
+    tracker.input.session.controlResponses = 3;
+    tracker.connected(false, "Simulator");
+    expect(tracker.input.realTrainerConnected).toBe(false);
+    expect(tracker.input.session).toMatchObject({ realConnectionCount: 0, controlResponses: 0 });
+    expect(tracker.input.checks.stop.passed).toBe(false);
+    expect(buildQualificationReport(tracker.input)).toMatchObject({ passed: false });
   });
 });

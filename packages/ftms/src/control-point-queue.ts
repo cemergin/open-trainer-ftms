@@ -41,6 +41,7 @@ export class ControlPointQueue {
   #pending: PendingCommand | undefined;
   #unsubscribe: Unsubscribe | undefined;
   #openPromise: Promise<void> | undefined;
+  #generation = 0;
   #closed = true;
 
   constructor(
@@ -61,14 +62,23 @@ export class ControlPointQueue {
   }
 
   async #open(): Promise<void> {
-    this.#closed = false;
+    const generation = this.#generation;
     this.#desynchronizedOpcodes.clear();
     try {
-      this.#unsubscribe = await this.transport.subscribe(FTMS_UUIDS.controlPoint, (value) => {
-        this.#handleResponse(value);
+      const unsubscribe = await this.transport.subscribe(FTMS_UUIDS.controlPoint, (value) => {
+        if (generation === this.#generation) this.#handleResponse(value);
       });
+      if (generation !== this.#generation) {
+        unsubscribe();
+        throw new FtmsStateError(
+          "Control point closed while opening.",
+          FTMS_ERROR_CODE.operationClosed,
+        );
+      }
+      this.#unsubscribe = unsubscribe;
+      this.#closed = false;
     } catch (error) {
-      this.#closed = true;
+      if (generation === this.#generation) this.#closed = true;
       throw normalizeFtmsError(
         error,
         "Subscribing to the FTMS control point failed.",
@@ -136,6 +146,8 @@ export class ControlPointQueue {
 
   close(reason = "Control point closed."): void {
     this.#closed = true;
+    this.#generation += 1;
+    this.#openPromise = undefined;
     const unsubscribe = this.#unsubscribe;
     this.#unsubscribe = undefined;
     try {
@@ -152,7 +164,11 @@ export class ControlPointQueue {
       this.#pending.reject(closedError);
       this.#pending = undefined;
     }
-    for (const queued of this.#queued.splice(0)) queued.reject(closedError);
+    this.cancelQueued(closedError);
+  }
+
+  cancelQueued(reason: Error): void {
+    for (const queued of this.#queued.splice(0)) queued.reject(reason);
   }
 
   #rejectQueued(predicate: (entry: QueuedCommand) => boolean): void {

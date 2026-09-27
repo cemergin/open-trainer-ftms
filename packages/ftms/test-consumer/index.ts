@@ -17,8 +17,5 @@ declare const customTransport: FtmsTransport;
 const custom: Trainer = createTrainer(customTransport);
 const browser: Trainer = createWebBluetoothTrainer();
 
-void connectionLabel;
-void encodedPower;
-void custom;
-void browser;
+export { connectionLabel, encodedPower, custom, browser };
 unsubscribeStatus();

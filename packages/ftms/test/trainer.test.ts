@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type MockInstance } from "vitest";
 import {
   FTMS_ERROR_CODE,
   FtmsControlError,
@@ -6,6 +6,7 @@ import {
   type FtmsTransport,
   type MachineStatus,
   type TrainerTelemetry,
+  type Trainer,
   type Unsubscribe,
 } from "../src/index.js";
 import { createMockTrainer, MockFtmsTransport } from "../src/testing.js";
@@ -75,7 +76,95 @@ class SelectiveFailureTransport implements FtmsTransport {
   }
 }
 
+function manuallyAcknowledgedTrainer(): {
+  trainer: Trainer;
+  write: MockInstance<MockFtmsTransport["write"]>;
+  notify: (uuid: number, ...bytes: number[]) => void;
+} {
+  const transport = new MockFtmsTransport();
+  const notifications = new Map<number, (value: DataView) => void>();
+  vi.spyOn(transport, "subscribe").mockImplementation(async (uuid, listener) => {
+    notifications.set(uuid, listener);
+    return () => {
+      notifications.delete(uuid);
+    };
+  });
+  const write = vi.spyOn(transport, "write").mockResolvedValue(undefined);
+  const trainer = createTrainer(transport, { commandTimeoutMs: 500, autoStartTelemetry: false });
+  const notify = (uuid: number, ...bytes: number[]): void => {
+    notifications.get(uuid)?.(new DataView(Uint8Array.from(bytes).buffer));
+  };
+  return { trainer, write, notify };
+}
+
 describe("FtmsTrainer with the simulated transport", () => {
+  it.each(["stop", "pause", "reset"] as const)(
+    "%s cancels an earlier queued Start",
+    async (operation) => {
+      const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+      await trainer.connect();
+      const control = trainer.acquireControl();
+      const start = expect(trainer.start()).rejects.toMatchObject({
+        code: FTMS_ERROR_CODE.commandSuperseded,
+      });
+      const safety = trainer[operation]();
+      await start;
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await control;
+      const opcode = operation === "reset" ? 0x01 : 0x08;
+      expect(write).toHaveBeenCalledTimes(2);
+      expect(write).toHaveBeenLastCalledWith(
+        FTMS_UUIDS.controlPoint,
+        expect.objectContaining({ 0: opcode }),
+      );
+      notify(FTMS_UUIDS.controlPoint, 0x80, opcode, 0x01);
+      await safety;
+      expect(write).toHaveBeenCalledTimes(2);
+      expect(trainer.activity.current).toBe(operation === "pause" ? "paused" : "idle");
+      await trainer.disconnect();
+    },
+  );
+
+  it.each(["status", "rejection"] as const)(
+    "cancels queued commands when control is lost through %s",
+    async (signal) => {
+      const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+      await trainer.connect();
+      const control = expect(trainer.acquireControl()).rejects.toThrow();
+      const power = expect(trainer.setTargetPower(100)).rejects.toThrow("control was lost");
+      if (signal === "status") notify(FTMS_UUIDS.machineStatus, 0xff);
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, signal === "status" ? 0x01 : 0x05);
+      await Promise.all([control, power]);
+      expect(write).toHaveBeenCalledOnce();
+      expect(trainer.control.current).toBe("revoked");
+      await trainer.disconnect();
+    },
+  );
+
+  it("does not become ready or retain a telemetry subscription after a setup disconnect", async () => {
+    const transport = new MockFtmsTransport();
+    const subscribe = transport.subscribe.bind(transport);
+    let finish: (() => void) | undefined;
+    const unsubscribe = vi.fn();
+    vi.spyOn(transport, "subscribe").mockImplementation((uuid, listener) => {
+      if (uuid !== FTMS_UUIDS.indoorBikeData) return subscribe(uuid, listener);
+      return new Promise((resolve) => {
+        finish = () => resolve(unsubscribe);
+      });
+    });
+    const trainer = createTrainer(transport);
+    const connecting = expect(trainer.connect()).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await transport.disconnect();
+    finish?.();
+    await connecting;
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(trainer.connection.current).not.toBe("ready");
+    expect(trainer.capabilities.current).toBeNull();
+  });
+
   it("discovers capabilities, controls ERG mode, and emits telemetry", async () => {
     const trainer = createMockTrainer({}, { commandTimeoutMs: 500 });
     expect(trainer.connection.current).toBe("disconnected");
@@ -128,7 +217,122 @@ describe("FtmsTrainer with the simulated transport", () => {
     const trainer = createMockTrainer({}, { commandTimeoutMs: 500 });
     await trainer.connect();
     await expect(trainer.start()).rejects.toBeInstanceOf(FtmsControlError);
+    expect(trainer.control.current).toBe("revoked");
     await trainer.disconnect();
+  });
+
+  it("preserves revoked ownership when the request for control is denied", async () => {
+    const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = expect(trainer.acquireControl()).rejects.toBeInstanceOf(FtmsControlError);
+      await vi.waitFor(() => expect(write).toHaveBeenCalled());
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x05);
+      await acquired;
+      expect(trainer.control.current).toBe("revoked");
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("does not restore revoked control from a delayed acknowledgement", async () => {
+    const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = expect(trainer.acquireControl()).rejects.toThrow("control was lost");
+      await vi.waitFor(() => expect(write).toHaveBeenCalled());
+      notify(FTMS_UUIDS.machineStatus, 0xff);
+      expect(trainer.control.current).toBe("revoked");
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await acquired;
+      expect(trainer.control.current).toBe("revoked");
+
+      const retry = trainer.acquireControl();
+      await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await retry;
+      expect(trainer.control.current).toBe("owned");
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("does not report running when control is lost before Start is acknowledged", async () => {
+    const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = trainer.acquireControl();
+      await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await acquired;
+
+      const started = expect(trainer.start()).rejects.toThrow("control was lost");
+      await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+      notify(FTMS_UUIDS.machineStatus, 0xff);
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x07, 0x01);
+      await started;
+      expect(trainer.control.current).toBe("revoked");
+      expect(trainer.activity.current).toBe("idle");
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("preserves control loss in the microtask after acquisition is acknowledged", async () => {
+    const { trainer, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = trainer.acquireControl();
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      queueMicrotask(() => notify(FTMS_UUIDS.machineStatus, 0xff));
+      await acquired;
+      expect(trainer.control.current).toBe("revoked");
+      expect(trainer.activity.current).toBe("idle");
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("preserves control loss in the microtask after Start is acknowledged", async () => {
+    const { trainer, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = trainer.acquireControl();
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await acquired;
+
+      const started = trainer.start();
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x07, 0x01);
+      queueMicrotask(() => notify(FTMS_UUIDS.machineStatus, 0xff));
+      await started;
+      expect(trainer.control.current).toBe("revoked");
+      expect(trainer.activity.current).toBe("idle");
+    } finally {
+      await trainer.disconnect();
+    }
+  });
+
+  it("distinguishes wheel circumference changes from control permission loss", async () => {
+    const { trainer, write, notify } = manuallyAcknowledgedTrainer();
+    await trainer.connect();
+    try {
+      const acquired = trainer.acquireControl();
+      await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+      notify(FTMS_UUIDS.controlPoint, 0x80, 0x00, 0x01);
+      await acquired;
+
+      const status = vi.fn();
+      trainer.machineStatus.subscribe(status);
+      notify(FTMS_UUIDS.machineStatus, 0x13, 0x08, 0x52);
+      expect(trainer.control.current).toBe("owned");
+      expect(status).toHaveBeenLastCalledWith(Uint8Array.of(0x13, 0x08, 0x52));
+
+      notify(FTMS_UUIDS.machineStatus, 0xff);
+      expect(trainer.control.current).toBe("revoked");
+      expect(status).toHaveBeenLastCalledWith(Uint8Array.of(0xff));
+    } finally {
+      await trainer.disconnect();
+    }
   });
 
   it("runs only one FTMS control procedure at a time", async () => {

@@ -187,11 +187,16 @@
               <h2>Device qualification</h2>
               <p>
                 Use this for any FTMS trainer. Draft metadata and notes stay in this browser for the
-                current runtime; safety, pass marks, and live counters reset on reload.
+                current runtime; safety, pass marks, and live counters reset on reload. Changing the
+                trainer, format, or client details starts fresh evidence.
               </p>
             </div>
             <output id="qualification-progress" class="progress-badge">0 / 12 passed</output>
           </div>
+
+          <p id="qualification-storage" role="status" hidden>
+            Draft saving is unavailable. Your notes remain on this page until you leave.
+          </p>
 
           <label class="safety-acknowledgement" for="qualification-safety">
             <input id="qualification-safety" type="checkbox" />

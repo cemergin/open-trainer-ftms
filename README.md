@@ -11,7 +11,7 @@ There is no account system, cloud service, multiplayer code, workout marketplace
 
 ## Requirements
 
-- Node.js 22.12+ (22.x), 24.x, or 26+ for workspace development
+- Node.js 22.13+ (22.x), 24.x, or 26+ for workspace development
 - npm 10.9 or newer
 - Chrome or Edge for a real trainer
 - A secure context: HTTPS in production or `localhost` during development

@@ -29,7 +29,7 @@ The JSON template remains available for tooling and review, but contributors sho
 9. Power-cycle the trainer during a session and confirm stale telemetry and capabilities are cleared.
 10. Repeat stop after command traffic and confirm it is never overtaken by a later target.
 
-Every check requires a useful sanitized observation. The release gate also requires ten real connections, at least one telemetry sample and control response, a secure browser context, and a runtime fingerprint matching the current behavioral sources. Add the report to `hardware/compatibility.json`, then run:
+Every check requires a useful sanitized observation. The release gate also requires ten real connections, at least one telemetry sample and control response, a secure browser context, and a runtime fingerprint matching the current behavioral sources, build settings, and dependencies. Add the report to `hardware/compatibility.json`, then run:
 
 ```sh
 npm run release:check

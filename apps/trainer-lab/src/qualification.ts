@@ -146,6 +146,52 @@ export interface QualificationReadinessInput {
   checks: QualificationChecksState;
 }
 
+/** Draft notes survive a new run; physical evidence and pass marks never do. */
+export class QualificationTracker {
+  readonly input: QualificationReadinessInput;
+  private deviceName: string | undefined;
+
+  constructor(metadata: QualificationMetadata) {
+    this.input = {
+      metadata,
+      safetyAcknowledged: false,
+      realTrainerConnected: false,
+      checks: createEmptyQualificationChecks(),
+      session: {
+        source: "trainer-lab",
+        startedAt: new Date().toISOString(),
+        realConnectionCount: 0,
+        telemetrySamples: 0,
+        controlResponses: 0,
+        errorCount: 0,
+      },
+    };
+  }
+
+  connected(real: boolean, deviceName: string | undefined): void {
+    if (!real || (this.input.realTrainerConnected && this.deviceName !== deviceName)) {
+      this.reset();
+    }
+    if (!real) return;
+    this.deviceName = deviceName;
+    this.input.realTrainerConnected = true;
+    this.input.session.realConnectionCount += 1;
+  }
+
+  reset(): void {
+    this.deviceName = undefined;
+    this.input.realTrainerConnected = false;
+    Object.assign(this.input.session, {
+      startedAt: new Date().toISOString(),
+      realConnectionCount: 0,
+      telemetrySamples: 0,
+      controlResponses: 0,
+      errorCount: 0,
+    });
+    for (const check of QUALIFICATION_CHECKS) this.input.checks[check.id].passed = false;
+  }
+}
+
 export function createEmptyQualificationChecks(): QualificationChecksState {
   return Object.fromEntries(
     QUALIFICATION_CHECKS.map(({ id }) => [id, { passed: false, notes: "" }]),

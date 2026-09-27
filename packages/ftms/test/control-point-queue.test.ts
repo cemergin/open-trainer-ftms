@@ -24,6 +24,34 @@ class RejectingSubscribeTransport extends MockFtmsTransport {
 }
 
 describe("ControlPointQueue", () => {
+  it("releases a subscription that finishes after close without reopening commands", async () => {
+    const transport = new MockFtmsTransport();
+    await transport.connect();
+    let finish: ((unsubscribe: () => void) => void) | undefined;
+    vi.spyOn(transport, "subscribe").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const queue = new ControlPointQueue(transport, 100);
+    const opening = expect(queue.open()).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    queue.close();
+    const unsubscribe = vi.fn();
+    finish?.(unsubscribe);
+    await opening;
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    await expect(queue.execute(stopCommand())).rejects.toMatchObject({
+      code: FTMS_ERROR_CODE.operationClosed,
+    });
+    await queue.open();
+    await expect(queue.execute(stopCommand())).resolves.toMatchObject({ requestOpcode: 0x08 });
+    queue.close();
+    await transport.disconnect();
+  });
+
   it("quarantines a timed-out opcode until its late response is discarded", async () => {
     vi.useFakeTimers();
     try {
