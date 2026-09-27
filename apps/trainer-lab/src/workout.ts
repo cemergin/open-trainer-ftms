@@ -56,6 +56,8 @@ export interface WorkoutStep {
   name: string;
   seconds: number;
   watts: number;
+  endWatts?: number;
+  cadenceRpm?: number;
   effort: "easy" | "steady" | "hard";
 }
 export interface Workout {
@@ -142,7 +144,12 @@ export function currentStep(
   let start = 0;
   for (const [index, step] of workout.steps.entries()) {
     if (elapsed < start + step.seconds || index === workout.steps.length - 1) {
-      return { step, index, remaining: Math.max(0, start + step.seconds - elapsed) };
+      const progress = Math.min(1, Math.max(0, (elapsed - start) / step.seconds));
+      const target =
+        step.endWatts === undefined
+          ? step
+          : { ...step, watts: step.watts + (step.endWatts - step.watts) * progress };
+      return { step: target, index, remaining: Math.max(0, start + step.seconds - elapsed) };
     }
     start += step.seconds;
   }

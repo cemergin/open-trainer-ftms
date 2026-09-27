@@ -1,6 +1,7 @@
 import {
   FTMS_ERROR_CODE,
   FtmsCommandSupersededError,
+  FtmsError,
   FtmsProtocolError,
   FtmsStateError,
   FtmsTimeoutError,
@@ -8,7 +9,13 @@ import {
 } from "./errors.js";
 import { parseControlPointResponse } from "./parsers.js";
 import { EventSource } from "./reactive.js";
-import type { ControlPointResponse, FtmsTransport, Unsubscribe } from "./types.js";
+import type {
+  CommandEvent,
+  CommandPhase,
+  ControlPointResponse,
+  FtmsTransport,
+  Unsubscribe,
+} from "./types.js";
 import { FTMS_UUIDS } from "./uuids.js";
 
 export interface ControlPointExecutionOptions {
@@ -18,6 +25,9 @@ export interface ControlPointExecutionOptions {
 }
 
 interface QueuedCommand {
+  readonly id: number;
+  readonly queuedAt: number;
+  sentAt?: number;
   readonly command: Uint8Array;
   readonly opcode: number;
   readonly priority: "normal" | "safety";
@@ -33,6 +43,11 @@ interface PendingCommand extends QueuedCommand {
 export class ControlPointQueue {
   readonly #responseSource = new EventSource<ControlPointResponse>();
   readonly #errorSource = new EventSource<Error>();
+  readonly #commandSource = new EventSource<CommandEvent>((error) =>
+    this.#errorSource.emit(normalizeFtmsError(error, "A command event subscriber failed.")),
+  );
+  readonly commandEvents = this.#commandSource.asReadonly();
+  #nextId = 0;
   readonly responses = this.#responseSource.asReadonly();
   readonly errors = this.#errorSource.asReadonly();
 
@@ -47,6 +62,7 @@ export class ControlPointQueue {
   constructor(
     private readonly transport: FtmsTransport,
     private readonly timeoutMs: number,
+    private readonly nextId: () => number = () => ++this.#nextId,
   ) {}
 
   async open(): Promise<void> {
@@ -126,6 +142,8 @@ export class ControlPointQueue {
       }
 
       const entry: QueuedCommand = {
+        id: this.nextId(),
+        queuedAt: performance.now(),
         command: payload,
         opcode,
         priority: options.priority ?? "normal",
@@ -140,6 +158,7 @@ export class ControlPointQueue {
       } else {
         this.#queued.push(entry);
       }
+      this.#event(entry, "queued");
       this.#pump();
     });
   }
@@ -161,14 +180,15 @@ export class ControlPointQueue {
     const closedError = new FtmsStateError(reason, FTMS_ERROR_CODE.operationClosed);
     if (this.#pending) {
       clearTimeout(this.#pending.timer);
-      this.#pending.reject(closedError);
+      const pending = this.#pending;
       this.#pending = undefined;
+      this.#reject(pending, closedError, "cancelled");
     }
     this.cancelQueued(closedError);
   }
 
   cancelQueued(reason: Error): void {
-    for (const queued of this.#queued.splice(0)) queued.reject(reason);
+    for (const queued of this.#queued.splice(0)) this.#reject(queued, reason, "cancelled");
   }
 
   #rejectQueued(predicate: (entry: QueuedCommand) => boolean): void {
@@ -176,10 +196,12 @@ export class ControlPointQueue {
       const entry = this.#queued[index];
       if (!entry || !predicate(entry)) continue;
       this.#queued.splice(index, 1);
-      entry.reject(
+      this.#reject(
+        entry,
         new FtmsCommandSupersededError("FTMS command was superseded before it was sent.", {
           details: { opcode: entry.opcode },
         }),
+        "superseded",
       );
     }
   }
@@ -189,7 +211,8 @@ export class ControlPointQueue {
     const entry = this.#queued.shift();
     if (!entry) return;
     if (this.#desynchronizedOpcodes.has(entry.opcode)) {
-      entry.reject(
+      this.#reject(
+        entry,
         new FtmsStateError(
           `FTMS command 0x${entry.opcode.toString(16)} is waiting for a late response after timing out.`,
           FTMS_ERROR_CODE.commandDesynchronized,
@@ -208,19 +231,25 @@ export class ControlPointQueue {
       if (this.#pending !== pending) return;
       this.#pending = undefined;
       this.#desynchronizedOpcodes.add(entry.opcode);
-      entry.reject(
+      this.#reject(
+        pending,
         new FtmsTimeoutError(`FTMS command 0x${entry.opcode.toString(16)} timed out.`, {
           details: { opcode: entry.opcode, timeoutMs: this.timeoutMs },
         }),
+        "timedout",
       );
       this.#pump();
     }, this.timeoutMs);
     this.#pending = pending;
+    pending.sentAt = performance.now();
+    this.#event(pending, "sent");
+    if (this.#pending !== pending) return;
     void this.transport.write(FTMS_UUIDS.controlPoint, entry.command).catch((error: unknown) => {
       if (this.#pending !== pending) return;
       this.#pending = undefined;
       clearTimeout(pending.timer);
-      entry.reject(
+      this.#reject(
+        pending,
         normalizeFtmsError(
           error,
           "Writing the FTMS control command failed.",
@@ -229,6 +258,31 @@ export class ControlPointQueue {
       );
       this.#pump();
     });
+  }
+
+  #event(
+    entry: QueuedCommand,
+    phase: CommandPhase,
+    details: Pick<CommandEvent, "resultCode" | "errorCode"> = {},
+  ): void {
+    const now = performance.now();
+    this.#commandSource.emit(
+      Object.freeze({
+        id: entry.id,
+        opcode: entry.opcode,
+        phase,
+        elapsedMs: Math.max(0, now - entry.queuedAt),
+        ...(entry.sentAt === undefined ? {} : { latencyMs: Math.max(0, now - entry.sentAt) }),
+        ...details,
+      }),
+    );
+  }
+
+  #reject(entry: QueuedCommand, error: Error, phase: CommandPhase = "rejected"): void {
+    this.#event(entry, phase, {
+      errorCode: error instanceof FtmsError ? error.code : FTMS_ERROR_CODE.unknown,
+    });
+    entry.reject(error);
   }
 
   #handleResponse(value: DataView): void {
@@ -256,6 +310,10 @@ export class ControlPointQueue {
     const pending = this.#pending;
     this.#pending = undefined;
     clearTimeout(pending.timer);
+    this.#event(pending, response.resultCode === 1 ? "acknowledged" : "rejected", {
+      resultCode: response.resultCode,
+      ...(response.resultCode === 1 ? {} : { errorCode: FTMS_ERROR_CODE.controlRejected }),
+    });
     pending.resolve(response);
     this.#pump();
   }

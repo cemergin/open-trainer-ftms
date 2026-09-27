@@ -1,3 +1,5 @@
+import { mountTrainingTools } from "./training-tools";
+import { supportsMode } from "./ride-control";
 import { Ride, type RideStatus, type RideRecord } from "./ride";
 import {
   createWorkout,
@@ -29,6 +31,7 @@ import { mountWorkoutPicker } from "./ui/workout-picker";
 import { renderRideHistory } from "./ui/history";
 import { byId } from "./ui/dom";
 import "./style.css";
+import "./training.css";
 
 const ui = {
   connect: byId("connect-real", HTMLButtonElement),
@@ -62,6 +65,41 @@ let archivedRideId: string | undefined;
 let profileKey = "";
 const supportsBluetooth = bluetoothSupported();
 byId("browser-help").hidden = supportsBluetooth;
+const training = mountTrainingTools({
+  run: act,
+  runRide: (operation) =>
+    act(async () => {
+      await operation();
+      persistRide(true);
+    }),
+  selectedWorkout,
+  refresh: render,
+  reload: () => {
+    if (trainer && ride?.status === "finished") {
+      const simulator = ride.simulator;
+      ride.dispose();
+      ride = newRide(trainer, simulator);
+      savedAt = 0;
+      savedStatus = "";
+    }
+    historyRecords = listRides();
+    recovery = loadCheckpoint();
+    previousRecord = loadRide();
+    historyKey = "";
+    training.refreshStorage();
+    render();
+  },
+});
+training.refreshStorage();
+function newRide(trainer: Trainer, simulator: boolean): Ride {
+  return new Ride(
+    trainer,
+    simulator,
+    Date.now,
+    (value) => training.sensors.applyToTelemetry(value, simulator),
+    () => training.sensors.sourceSnapshot(simulator),
+  );
+}
 
 function text(id: string, value: string): void {
   const element = byId(id);
@@ -78,7 +116,11 @@ function automaticTarget(): number {
   return suggestedTarget(mode(), previous?.averagePower ?? undefined);
 }
 function selectedWorkout(): Workout {
-  const watts = ui.watts.value.trim() === "" ? automaticTarget() : ui.watts.valueAsNumber;
+  if (training.customWorkout) return training.customWorkout;
+  const watts =
+    training.options.controlMode !== "erg" || ui.watts.value.trim() === ""
+      ? automaticTarget()
+      : ui.watts.valueAsNumber;
   return createWorkout(mode(), Number(ui.duration.value), watts);
 }
 function previewWorkout(): Workout {
@@ -92,6 +134,10 @@ function previewWorkout(): Workout {
 function showRecoveredWorkout(): void {
   const workout = ride?.workout;
   if (!workout) return;
+  const sources = ride?.record().sourceChanges?.at(-1)?.sources;
+  if (sources)
+    for (const metric of ["power", "cadence", "heartRate"] as const)
+      training.sensors.selectSource(metric, sources[metric].source);
   const selected = WORKOUT_OPTIONS.find((option) => option.name === workout.name);
   if (selected) {
     const input = ui.options.querySelector<HTMLInputElement>(`input[value="${selected.id}"]`);
@@ -115,7 +161,7 @@ async function connect(simulator: boolean, recover = false): Promise<void> {
     // connect() stays in this click's activation so Chrome can open its Bluetooth chooser.
     const next = createTrainerConnection(simulator);
     trainer = next;
-    ride = new Ride(next, simulator);
+    ride = newRide(next, simulator);
     const pending = next.connect();
     render();
     const capabilities = await pending;
@@ -126,9 +172,8 @@ async function connect(simulator: boolean, recover = false): Promise<void> {
       appError = "Ride recovered and paused. Start pedaling, then press Resume ride.";
       showRecoveredWorkout();
     }
-    if (!capabilities.supportsPowerTarget)
-      appError =
-        "Connected, but this trainer does not advertise ERG power control. Trainer Lab has the other available controls.";
+    if (!supportsMode(capabilities, training.options.controlMode ?? "erg"))
+      appError = "Connected. Select a ride mode supported by this trainer before starting.";
   } catch (error) {
     appError =
       error instanceof Error && error.name === "NotFoundError"
@@ -177,7 +222,9 @@ function render(): void {
   persistRide();
   const workout = ride?.workout ?? previewWorkout();
   const elapsed = ride?.elapsed ?? 0;
-  const stage = currentStep(workout, elapsed);
+  const workoutElapsed = ride?.workoutElapsed ?? elapsed;
+  const stage = currentStep(workout, workoutElapsed);
+  const controlMode = ride?.workout ? ride.controlMode : (training.options.controlMode ?? "erg");
   const telemetry = connected ? ride?.telemetry : null;
   const target = ride?.workout
     ? ride.target
@@ -262,15 +309,47 @@ function render(): void {
       ? "Simulated power · demo mode"
       : connected && !telemetry
         ? "Waiting for fresh trainer data…"
-        : "Live from your trainer",
+        : training.sensors.state.current.sources.power === "external"
+          ? "Power from your selected external sensor"
+          : training.sensors.state.current.sources.power === "none"
+            ? "Power source is off"
+            : "Live from your trainer",
   );
-  text("target", String(target));
+  const controlTarget =
+    controlMode === "erg"
+      ? target
+      : ride?.workout
+        ? ride.controlTarget
+        : controlMode === "terrain"
+          ? 0
+          : 5;
+  text(
+    "control-label",
+    controlMode === "erg"
+      ? "TARGET POWER"
+      : controlMode === "terrain"
+        ? "ROAD GRADE"
+        : "RESISTANCE",
+  );
+  const targetUnit = controlMode === "erg" ? "W" : controlMode === "terrain" ? "%" : "level";
+  text("control-unit", targetUnit);
+  text("target", String(controlTarget));
   renderFeedback(
     telemetry?.instantaneousPowerWatts,
-    target,
+    controlMode === "erg" ? target : 0,
     telemetry?.instantaneousSpeedKph,
     status === "riding",
   );
+  if (controlMode !== "erg") {
+    text("feedback-label", controlMode === "terrain" ? "Follow the road" : "Find your effort");
+    text(
+      "feedback-guidance",
+      controlMode === "terrain"
+        ? "Shift gears with the grade. Power follows your effort."
+        : "Adjust resistance, gears, and cadence to set your effort.",
+    );
+  }
+  byId("ride-feedback").classList.toggle("no-power-target", controlMode !== "erg");
   text("elapsed", formatTime(Math.floor(elapsed)));
   text("total-time", workout.seconds === null ? "elapsed" : `/ ${formatTime(workout.seconds)}`);
   text("remaining", formatTime(stage.remaining));
@@ -288,7 +367,8 @@ function render(): void {
   ui.start.disabled =
     !connected ||
     hasUnresolvedRecovery() ||
-    !trainer?.capabilities.current?.supportsPowerTarget ||
+    !supportsMode(trainer?.capabilities.current, controlMode) ||
+    training.sensors.hasMixedSources(ride?.simulator ?? false) ||
     Boolean(ride?.busy) ||
     !ui.watts.checkValidity();
   ui.start.textContent = status === "paused" ? "Resume ride →" : "Start ride →";
@@ -298,19 +378,28 @@ function render(): void {
   ui.stop.disabled = status === "stopping";
   ui.stop.textContent = status === "stopping" ? "Stopping…" : "■ End ride";
   ui.up.disabled = ui.down.disabled = !["riding", "paused"].includes(status) || Boolean(ride?.busy);
-  const targetStep = Math.max(5, trainer?.capabilities.current?.powerRange?.increment ?? 1);
-  ui.down.setAttribute("aria-label", `Decrease target by ${targetStep} watts`);
-  ui.up.setAttribute("aria-label", `Increase target by ${targetStep} watts`);
+  const targetStep =
+    controlMode === "erg"
+      ? Math.max(5, trainer?.capabilities.current?.powerRange?.increment ?? 1)
+      : controlMode === "terrain"
+        ? 0.5
+        : Math.max(1, trainer?.capabilities.current?.resistanceRange?.increment ?? 1);
+  ui.down.setAttribute("aria-label", `Decrease target by ${targetStep} ${targetUnit}`);
+  ui.up.setAttribute("aria-label", `Increase target by ${targetStep} ${targetUnit}`);
   const stepLabel = document.querySelector(".target-controls span");
-  if (stepLabel) stepLabel.textContent = `${targetStep} W`;
-  ui.options.disabled = ui.watts.disabled = status !== "ready";
+  if (stepLabel) stepLabel.textContent = `${targetStep} ${targetUnit}`;
+  ui.options.disabled = status !== "ready";
+  ui.watts.disabled =
+    status !== "ready" || controlMode !== "erg" || Boolean(training.customWorkout);
+  byId("power-setting").hidden = controlMode !== "erg";
+  byId("target-help").hidden = controlMode !== "erg";
   ui.duration.disabled = status !== "ready" || mode() === "free";
   text("action-hint", actionHint(status, active, connected));
   text(
     "workout-duration",
     workout.seconds === null
-      ? "OPEN ENDED · ERG"
-      : `${Math.round(workout.seconds / 60)} MIN · ERG WORKOUT`,
+      ? `OPEN ENDED · ${controlMode.toUpperCase()}`
+      : `${Math.round(workout.seconds / 60)} MIN · ${controlMode.toUpperCase()}`,
   );
   text(
     "profile-end",
@@ -324,11 +413,13 @@ function render(): void {
   );
   text(
     "setup-footer",
-    mode() === "free"
-      ? "Change the target any time with the + and − buttons."
-      : `Your warm-up starts gently at ${trainerWatts(currentStep(workout, 0).step.watts, trainer?.capabilities.current?.powerRange)} W.`,
+    controlMode !== "erg"
+      ? "Power is set by your effort. The selected workout provides timing and cadence cues."
+      : mode() === "free"
+        ? "Change the target any time with the + and − buttons."
+        : `Your warm-up starts gently at ${trainerWatts(currentStep(workout, 0).step.watts, trainer?.capabilities.current?.powerRange)} W.`,
   );
-  renderProfile(workout, stage.index, elapsed, active);
+  renderProfile(workout, stage.index, workoutElapsed, active);
   text("distance", `${(ride?.distanceKm ?? 0).toFixed(2)} km`);
   text("average", `${ride?.averagePower ?? "—"} W`);
   text("work", `${Math.round(ride?.workKj ?? 0)} kJ`);
@@ -336,6 +427,9 @@ function render(): void {
     [
       appError,
       ride?.error,
+      training.sensors.hasMixedSources(ride?.simulator ?? false)
+        ? "Selected sensors and trainer must both use demo data or both use real Bluetooth data. Change the sensor source before riding."
+        : "",
       !savedToDevice
         ? "Browser storage is unavailable. Keep this tab open, then end your ride and download its CSV to keep your data."
         : "",
@@ -345,6 +439,7 @@ function render(): void {
   renderSummary(ended);
   renderSavedRides(active);
   void keepScreenAwake(active);
+  training.update(ride, trainer, historyRecords);
 }
 
 function renderProfile(
@@ -353,8 +448,10 @@ function renderProfile(
   elapsed: number,
   active: boolean,
 ): void {
-  const adjustment = ride?.adjustment ?? 0;
-  const key = JSON.stringify([workout, adjustment, trainer?.capabilities.current?.powerRange]);
+  const erg =
+    (ride?.workout ? ride.controlMode : (training.options.controlMode ?? "erg")) === "erg";
+  const adjustment = erg ? (ride?.adjustment ?? 0) : 0;
+  const key = JSON.stringify([workout, adjustment, erg, trainer?.capabilities.current?.powerRange]);
   if (key !== profileKey) {
     profileKey = key;
     ui.profile.replaceChildren();
@@ -368,8 +465,8 @@ function renderProfile(
       bar.style.flex = String(Number.isFinite(step.seconds) ? step.seconds : 1);
       const power = powers[i];
       if (power === undefined) throw new Error("Missing workout power.");
-      bar.style.height = `${Math.max(12, (power / max) * 100)}%`;
-      bar.title = `${step.name}: ${powers[i]} W${Number.isFinite(step.seconds) ? ` · ${formatTime(step.seconds)}` : ""}`;
+      bar.style.height = `${erg ? Math.max(12, (power / max) * 100) : 70}%`;
+      bar.title = `${step.name}${erg ? `: ${powers[i]} W` : ""}${Number.isFinite(step.seconds) ? ` · ${formatTime(step.seconds)}` : ""}`;
       ui.profile.append(bar);
     });
     const marker = document.createElement("span");
@@ -377,7 +474,12 @@ function renderProfile(
     ui.profile.append(marker);
     ui.profile.setAttribute(
       "aria-label",
-      workout.steps.map((step, i) => `${step.name}, ${powers[i]} watts`).join("; "),
+      workout.steps
+        .map(
+          (step, i) =>
+            `${step.name}${erg ? `, ${powers[i]} watts` : `, ${formatTime(step.seconds)}`}`,
+        )
+        .join("; "),
     );
   }
   ui.profile.querySelectorAll(".profile-block").forEach((bar, i) => {
@@ -402,7 +504,7 @@ function persistRide(force = false): void {
   previousRecord = ride.record();
   savedAt = ride.elapsed;
   savedStatus = ride.status;
-  const reachedEnd = ride.workout.seconds !== null && ride.elapsed >= ride.workout.seconds;
+  const reachedEnd = ride.workout.seconds !== null && ride.workoutElapsed >= ride.workout.seconds;
   if (ride.status === "finished" || reachedEnd || ride.startedAt === archivedRideId) {
     savedToDevice = saveRide(previousRecord);
     if (savedToDevice) {
@@ -447,7 +549,8 @@ function renderSavedRides(active: boolean): void {
   );
   if (key !== historyKey) {
     historyKey = key;
-    renderRideHistory(byId("ride-history"), historyRecords, downloadRide);
+    renderRideHistory(byId("ride-history"), historyRecords, downloadRide, training);
+    training.refreshStorage();
   }
 }
 function renderSummary(ended: boolean): void {
@@ -493,10 +596,18 @@ ui.disconnect.addEventListener(
 );
 ui.start.addEventListener("click", () => {
   const currentRide = ride;
-  if (!currentRide || hasUnresolvedRecovery() || !ui.watts.reportValidity()) return;
+  if (
+    !currentRide ||
+    hasUnresolvedRecovery() ||
+    !ui.watts.reportValidity() ||
+    training.sensors.hasMixedSources(currentRide.simulator)
+  )
+    return;
   const beginning = currentRide.status === "ready";
   void act(() =>
-    currentRide.status === "paused" ? currentRide.resume() : currentRide.start(selectedWorkout()),
+    currentRide.status === "paused"
+      ? currentRide.resume()
+      : currentRide.start(selectedWorkout(), training.options),
   );
   if (beginning) window.scrollTo(0, 0);
 });
@@ -519,6 +630,7 @@ ui.down.addEventListener(
   () =>
     void act(async () => {
       await ride?.adjust(-5);
+      persistRide(true);
     }),
 );
 ui.up.addEventListener(
@@ -526,6 +638,7 @@ ui.up.addEventListener(
   () =>
     void act(async () => {
       await ride?.adjust(5);
+      persistRide(true);
     }),
 );
 ui.newRide.addEventListener("click", () => {
@@ -533,14 +646,17 @@ ui.newRide.addEventListener("click", () => {
   persistRide(true);
   const simulator = ride.simulator;
   ride.dispose();
-  ride = new Ride(trainer, simulator);
+  ride = newRide(trainer, simulator);
   savedAt = 0;
   savedStatus = "";
   appError = "";
   render();
 });
 for (const element of [ui.options, ui.duration, ui.watts])
-  element.addEventListener("input", render);
+  element.addEventListener("input", () => {
+    training.clearCustom();
+    render();
+  });
 byId("download").addEventListener("click", () => {
   if (previousRecord) downloadRide(previousRecord);
 });

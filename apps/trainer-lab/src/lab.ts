@@ -1,7 +1,13 @@
 import { byId } from "./ui/dom";
 import {
   bluetoothSupported,
-  createTrainerConnection,
+  createLabConnection,
+  readLabTraceFile,
+  LabReplay,
+  type LabConnection,
+  type LabFault,
+  type CommandEvent,
+  type MachineStatus,
   copyText,
   downloadText,
   type Trainer,
@@ -52,6 +58,11 @@ let subscriptions: Unsubscribe[] = [];
 let connecting = false;
 let disconnecting = false;
 let simulator = false;
+let replaying = false;
+let replay: LabReplay | undefined;
+let labConnection: LabConnection | undefined;
+const commandEvents: CommandEvent[] = [];
+const decodedStatuses: MachineStatus[] = [];
 let lastTelemetryAt: number | undefined;
 let actionSerial = 0;
 let pendingLabel = "";
@@ -116,7 +127,11 @@ function bind(next: Trainer): void {
   const real = !simulator;
   for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
   trainer = next;
-  controls = new LabControls(next, simulator);
+  controls = new LabControls(next, simulator && !replaying);
+  commandEvents.splice(0);
+  decodedStatuses.splice(0);
+  byId("command-events").replaceChildren();
+  text("decoded-status", "No machine status received.");
   clearTelemetry();
   packets.splice(0);
   byId("packets").replaceChildren();
@@ -149,6 +164,7 @@ function bind(next: Trainer): void {
         qualification.telemetry(real);
       } else clearTelemetry();
       renderSnapshot();
+      renderTraceStatus();
     }),
     next.capabilities.subscribe((value) => {
       renderCapabilities(value);
@@ -188,19 +204,51 @@ function bind(next: Trainer): void {
       );
       log(`Machine status: ${packetHex(bytes) || "empty packet"}`);
     }),
-    next.machineStatusEvents.subscribe((status) => log(`Parsed machine status: ${status.kind}`)),
-    next.errors.subscribe(showError),
+    next.commandEvents.subscribe((event) => {
+      commandEvents.push(event);
+      if (commandEvents.length > 100) commandEvents.shift();
+      const item = document.createElement("li");
+      item.textContent = `#${event.id} · 0x${event.opcode.toString(16).padStart(2, "0")} · ${event.phase} · ${event.elapsedMs.toFixed(1)} ms elapsed${event.latencyMs === undefined ? "" : ` · ${event.latencyMs.toFixed(1)} ms since dispatch`}${event.errorCode ? ` · ${event.errorCode}` : ""}`;
+      byId("command-events").prepend(item);
+      while (byId("command-events").children.length > 40)
+        byId("command-events").lastElementChild?.remove();
+    }),
+    next.machineStatusEvents.subscribe((status) => {
+      decodedStatuses.push(status);
+      if (decodedStatuses.length > 100) decodedStatuses.shift();
+      text(
+        "decoded-status",
+        JSON.stringify(
+          { kind: status.kind, decodedParameters: status.decodedParameters ?? null },
+          null,
+          2,
+        ),
+      );
+      log(
+        `Parsed machine status: ${status.kind}${status.decodedParameters ? ` · ${JSON.stringify(status.decodedParameters)}` : ""}`,
+      );
+      if (status.kind === "spin-down-status")
+        text(
+          "spindown-status",
+          `Trainer reports: ${status.decodedParameters?.status ?? "unknown"}.`,
+        );
+    }),
+    next.errors.subscribe((error) => {
+      if (!replay?.isStopped) showError(error);
+    }),
   ];
 }
 
 async function connect(useSimulator: boolean): Promise<void> {
-  if (connecting || disconnecting || trainer?.connection.current === "ready") return;
+  if (connecting || disconnecting || replaying || trainer?.connection.current === "ready") return;
   connecting = true;
   simulator = useSimulator;
   byId("message").hidden = true;
   actionSerial += 1;
   try {
-    const next = createTrainerConnection(simulator, qualification.resistanceControlFormat);
+    const fault = byId("fault-mode", HTMLSelectElement).value as LabFault;
+    labConnection = createLabConnection(simulator, qualification.resistanceControlFormat, fault);
+    const next = labConnection.trainer;
     bind(next);
     log(
       simulator
@@ -251,8 +299,9 @@ function renderState(): void {
   const control = trainer?.control.current ?? "unavailable";
   const activity = trainer?.activity.current ?? "idle";
   const ready = connection === "ready";
-  const busy = (controls?.busy ?? false) || connecting || disconnecting;
-  const targetsBlocked = (controls?.targetsBlocked ?? false) || connecting || disconnecting;
+  const busy = (controls?.busy ?? false) || connecting || disconnecting || replaying;
+  const targetsBlocked =
+    (controls?.targetsBlocked ?? false) || connecting || disconnecting || replaying;
   const owned = ready && control === "owned";
   const caps = trainer?.capabilities.current;
   text(
@@ -271,7 +320,27 @@ function renderState(): void {
     ready ? (trainer?.deviceName ?? "Unnamed FTMS trainer") : "No device connected",
   );
   byId("simulator-badge").hidden = !simulator || !ready;
-  byId("simulator-test").hidden = !simulator || !ready;
+  text(
+    "simulator-badge",
+    replaying
+      ? "OFFLINE REPLAY · NO PHYSICAL BIKE CONTROL"
+      : "SIMULATOR · NO PHYSICAL BIKE CONTROL",
+  );
+  byId("fault-mode", HTMLSelectElement).disabled = busy || ready;
+  input("trace-import").disabled = busy || ready;
+  button("stop-replay").hidden = !replaying;
+  renderTraceStatus();
+  button("spindown-start").disabled = !owned || busy || !caps?.supportsSpindown;
+  button("spindown-ignore").disabled = !owned || busy || !caps?.supportsSpindown;
+  text(
+    "spindown-support",
+    !caps
+      ? "Connect to check support"
+      : caps.supportsSpindown
+        ? "Supported by this trainer"
+        : "Not advertised by this trainer",
+  );
+  byId("simulator-test").hidden = !simulator || !ready || replaying;
   button("connect-real").disabled = busy || ready || !supportsBluetooth;
   button("connect-simulator").disabled = busy || ready;
   button("disconnect").disabled = !ready || busy;
@@ -280,7 +349,7 @@ function renderState(): void {
   button("pause").disabled = !owned || busy || activity !== "running";
   button("reset").disabled = !owned || busy;
   byId("resistance-format", HTMLSelectElement).disabled = busy || ready;
-  button("stop").disabled = !ready || Boolean(controls?.stopping) || disconnecting;
+  button("stop").disabled = !ready || Boolean(controls?.stopping) || disconnecting || replaying;
   button("stop").textContent = controls?.stopping ? "Stopping…" : "■ Stop";
   button("test-sequence").disabled =
     !ready || busy || !simulator || !caps?.supportsPowerTarget || activity === "running";
@@ -288,6 +357,7 @@ function renderState(): void {
     ["power-form", "target-power", "power-support", caps?.supportsPowerTarget],
     ["resistance-form", "resistance", "resistance-support", caps?.supportsResistanceTarget],
     ["grade-form", "grade", "grade-support", caps?.supportsSimulation],
+    ["cadence-form", "target-cadence", "cadence-support", caps?.supportsTargetCadence],
   ] as const;
   for (const [formId, inputId, supportId, supported] of forms) {
     input(inputId).disabled = !owned || targetsBlocked || !supported;
@@ -306,17 +376,31 @@ function renderState(): void {
     "command-hint",
     controls?.stopping
       ? "Stop queued. Waiting for the trainer’s acknowledgement…"
-      : controls?.pending
-        ? `${pendingLabel} pending… Stop remains available.`
-        : owned
-          ? "Control owned. Set a low target before starting."
-          : ready
-            ? "Connected. Take control before sending targets."
-            : "Connect a trainer, then take control.",
+      : replaying
+        ? "Replaying recorded commands offline. Use Stop replay to end playback."
+        : controls?.pending
+          ? `${pendingLabel} pending… Stop remains available.`
+          : owned
+            ? "Control owned. Set a low target before starting."
+            : ready
+              ? "Connected. Take control before sending targets."
+              : "Connect a trainer, then take control.",
   );
   text("connection-state", connection);
   text("control-state", control);
   text("activity-state", activity);
+}
+
+function renderTraceStatus(): void {
+  button("export-trace").disabled = !labConnection?.recording.capturedEventCount;
+  text(
+    "trace-state",
+    replaying && replay
+      ? `${replay.remainingEvents} offline protocol events remaining.`
+      : labConnection
+        ? `${labConnection.recording.capturedEventCount} raw events in memory${labConnection.recording.isTruncated ? " · recording incomplete (limit or transport failure)" : ""}`
+        : "No raw recording yet.",
+  );
 }
 
 function number(value: number | undefined, decimals = 0): string {
@@ -450,6 +534,7 @@ function snapshot(): object {
       runtimeFingerprint: __RUNTIME_FINGERPRINT__,
     },
     simulator,
+    replaying,
     deviceName: trainer?.deviceName ?? null,
     connection: trainer?.connection.current ?? "disconnected",
     control: trainer?.control.current ?? "unavailable",
@@ -566,6 +651,12 @@ for (const [formId, inputId, label, operation] of [
     (current: Trainer, value: number) => current.setResistanceLevel(value),
   ],
   [
+    "cadence-form",
+    "target-cadence",
+    "Cadence target",
+    (current: Trainer, value: number) => current.setTargetCadence(value),
+  ],
+  [
     "grade-form",
     "grade",
     "Grade target",
@@ -582,6 +673,75 @@ for (const [formId, inputId, label, operation] of [
       desk.runTarget(() => operation(current, field.valueAsNumber)),
     );
   });
+
+for (const [id, control] of [
+  ["spindown-start", "start"],
+  ["spindown-ignore", "ignore"],
+] as const) {
+  button(id).addEventListener("click", () => {
+    const current = trainer;
+    const desk = controls;
+    if (!current || !desk || button(id).disabled) return;
+    text("spindown-status", "Awaiting machine-status updates.");
+    void perform(`Spin-down ${control}`, () =>
+      desk.run(async () => {
+        const response = await current.spinDown(control);
+        text(
+          "spindown-target",
+          `Request accepted. Trainer target speed: ${response.targetSpeedLowKph}–${response.targetSpeedHighKph} km/h. Wait for machine-status results; acceptance does not confirm calibration completion.`,
+        );
+      }),
+    );
+  });
+}
+button("export-trace").addEventListener("click", () => {
+  if (!labConnection) return;
+  try {
+    download("ftms-raw-trace", labConnection.recording.trace);
+  } catch (error) {
+    showError(error);
+  }
+});
+input("trace-import").addEventListener("change", () => {
+  const file = input("trace-import").files?.[0];
+  if (!file || trainer?.connection.current === "ready" || connecting || disconnecting || replaying)
+    return;
+  void (async () => {
+    connecting = true;
+    renderState();
+    try {
+      const trace = await readLabTraceFile(file);
+      replay = new LabReplay(trace);
+      replaying = true;
+      simulator = true;
+      labConnection = undefined;
+      bind(replay.trainer);
+      connecting = false;
+      renderState();
+      log(
+        `Offline replay started: ${trace.events.length} protocol events. No hardware is connected.`,
+      );
+      await replay.play((message) => log(`Recorded rejection: ${message}`, "error"));
+      log(
+        replay.remainingEvents
+          ? "Offline replay stopped."
+          : "Offline replay completed; all recorded commands matched.",
+      );
+    } catch (error) {
+      showError(error);
+    } finally {
+      connecting = false;
+      replaying = false;
+      replay = undefined;
+      input("trace-import").value = "";
+      renderState();
+      renderSnapshot();
+    }
+  })();
+});
+button("stop-replay").addEventListener("click", () => {
+  replay?.stop();
+});
 
 button("copy-snapshot").addEventListener("click", () => {
   void (async () => {
@@ -602,7 +762,14 @@ button("download-snapshot").addEventListener("click", () => {
 });
 button("download-log").addEventListener("click", () => {
   try {
-    download("trainer-diagnostics", { schemaVersion: 1, snapshot: snapshot(), packets, logs });
+    download("trainer-diagnostics", {
+      schemaVersion: 1,
+      snapshot: snapshot(),
+      packets,
+      commandEvents,
+      decodedStatuses,
+      logs,
+    });
   } catch (error) {
     showError(error);
   }
@@ -617,6 +784,7 @@ button("clear-log").addEventListener("click", () => {
 });
 window.addEventListener("resize", drawChart);
 window.addEventListener("beforeunload", () => {
+  replay?.stop();
   void trainer?.disconnect().catch(() => undefined);
 });
 renderCapabilities(null);

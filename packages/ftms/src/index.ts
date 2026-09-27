@@ -23,7 +23,12 @@ export {
 export {
   CONTROL_RESULT,
   type ControlPointResponse,
+  type CommandEvent,
+  type CommandPhase,
   type MachineStatus,
+  type MachineStatusParameters,
+  type SpinDownControl,
+  type SpinDownResponse,
   type MachineStatusKind,
   type ResistanceControlFormat,
   type SimulationParameters,

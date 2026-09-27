@@ -1,0 +1,108 @@
+.workout-editor {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+}
+.workout-editor legend {
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+.editor-toolbar,
+.editor-block-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2);
+}
+.editor-field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+.editor-field input,
+.editor-field select,
+.workout-editor button {
+  min-height: var(--control-height);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+}
+.workout-editor button {
+  width: auto;
+}
+.workout-editor button.primary {
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+.editor-toolbar .editor-field {
+  flex: 1 1 160px;
+}
+.editor-blocks {
+  display: grid;
+  gap: var(--space-3);
+}
+.editor-block {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-inset);
+}
+.editor-block-heading {
+  align-items: center;
+}
+.editor-block-heading strong {
+  flex: 1;
+  min-width: 70px;
+}
+.editor-block-heading .editor-field {
+  width: 90px;
+}
+.editor-step {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.4fr) repeat(4, minmax(75px, 1fr)) auto;
+  align-items: end;
+  gap: var(--space-2);
+}
+.editor-preview {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+.editor-preview svg {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin-bottom: var(--space-2);
+}
+.editor-preview polygon {
+  fill: var(--color-profile-steady);
+  stroke: var(--color-accent);
+  stroke-width: 0.6;
+}
+.editor-status {
+  min-height: 1.4em;
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+.editor-error {
+  color: var(--color-danger-text);
+}
+@media (max-width: 900px) {
+  .editor-step {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .editor-step .editor-field:first-child {
+    grid-column: 1 / -1;
+  }
+}

@@ -36,6 +36,7 @@ describe("published package contract", () => {
       "./testing",
       "./transport",
       "./raw",
+      "./sensors",
     ]);
     expect(packageJson.files).toContain("LICENSE");
     expect(packageJson.files).toContain("src");

@@ -5,6 +5,8 @@ import {
   simulationCommand,
   startCommand,
   stopCommand,
+  spinDownCommand,
+  targetCadenceCommand,
   targetPowerCommand,
   targetResistanceCommand,
 } from "./commands.js";
@@ -22,13 +24,17 @@ import {
   parseCapabilities,
   parseIndoorBikeData,
   parseMachineStatus,
+  parseSpinDownResponse,
   parseSupportedPowerRange,
   parseSupportedResistanceRange,
 } from "./parsers.js";
 import { EventSource, StateSource } from "./reactive.js";
 import {
   CONTROL_RESULT,
+  type CommandEvent,
   type ControlPointResponse,
+  type SpinDownControl,
+  type SpinDownResponse,
   type FtmsTransport,
   type MachineStatus,
   type SimulationParameters,
@@ -75,6 +81,7 @@ export class FtmsTrainer implements Trainer {
   readonly #controlResponseSource = new EventSource<ControlPointResponse>(
     this.#reportSubscriberError,
   );
+  readonly #commandEventSource = new EventSource<CommandEvent>(this.#reportSubscriberError);
   readonly #machineStatusSource = new EventSource<Uint8Array>(this.#reportSubscriberError);
   readonly #machineStatusEventSource = new EventSource<MachineStatus>(this.#reportSubscriberError);
 
@@ -83,6 +90,7 @@ export class FtmsTrainer implements Trainer {
   readonly activity = this.#activitySource.asReadonly();
   readonly capabilities = this.#capabilitySource.asReadonly();
   readonly telemetry = this.#telemetrySource.asReadonly();
+  readonly commandEvents = this.#commandEventSource.asReadonly();
   readonly controlResponses = this.#controlResponseSource.asReadonly();
   readonly machineStatus = this.#machineStatusSource.asReadonly();
   readonly machineStatusEvents = this.#machineStatusEventSource.asReadonly();
@@ -92,6 +100,7 @@ export class FtmsTrainer implements Trainer {
   readonly #subscriptions: Unsubscribe[] = [];
   #connectPromise: Promise<TrainerCapabilities> | undefined;
   #disconnectPromise: Promise<void> | undefined;
+  #nextCommandId = 0;
   #controlEpoch = 0;
   #connectionEpoch = 0;
   readonly #options: Required<TrainerOptions>;
@@ -139,7 +148,11 @@ export class FtmsTrainer implements Trainer {
         this.transport.onDisconnect(() => this.#handleDisconnect("Bluetooth connection lost.")),
       );
 
-      this.#queue = new ControlPointQueue(this.transport, this.#options.commandTimeoutMs);
+      this.#queue = new ControlPointQueue(
+        this.transport,
+        this.#options.commandTimeoutMs,
+        () => ++this.#nextCommandId,
+      );
       await this.#queue.open();
       this.#assertConnection(connectionEpoch);
       this.#subscriptions.push(
@@ -147,6 +160,7 @@ export class FtmsTrainer implements Trainer {
           if (response.resultCode === CONTROL_RESULT.controlNotPermitted) this.#revokeControl();
           this.#controlResponseSource.emit(response);
         }),
+        this.#queue.commandEvents.subscribe((event) => this.#commandEventSource.emit(event)),
         this.#queue.errors.subscribe((error) => this.#errorSource.emit(error)),
       );
 
@@ -288,7 +302,7 @@ export class FtmsTrainer implements Trainer {
   async pause(): Promise<ControlPointResponse> {
     return this.#command(
       pauseCommand(),
-      { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+      { cancelQueuedKeys: ["setpoint", "cadence", "spindown", "start"], priority: "safety" },
       () => {
         this.#activitySource.setIfChanged("paused");
       },
@@ -300,7 +314,7 @@ export class FtmsTrainer implements Trainer {
     try {
       return await this.#command(
         stopCommand(),
-        { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+        { cancelQueuedKeys: ["setpoint", "cadence", "spindown", "start"], priority: "safety" },
         () => {
           this.#activitySource.setIfChanged("idle");
         },
@@ -315,7 +329,7 @@ export class FtmsTrainer implements Trainer {
   async reset(): Promise<ControlPointResponse> {
     return this.#command(
       resetCommand(),
-      { cancelQueuedKeys: ["setpoint", "start"], priority: "safety" },
+      { cancelQueuedKeys: ["setpoint", "cadence", "spindown", "start"], priority: "safety" },
       () => {
         this.#controlSource.setIfChanged("unavailable");
         this.#activitySource.setIfChanged("idle");
@@ -330,6 +344,22 @@ export class FtmsTrainer implements Trainer {
     }
     this.#assertRange(watts, capabilities.powerRange, "Target power");
     return this.#command(targetPowerCommand(watts), { coalesceKey: "setpoint" });
+  }
+
+  async setTargetCadence(rpm: number): Promise<ControlPointResponse> {
+    if (!this.#requireCapabilities().supportsTargetCadence) {
+      throw new FtmsCapabilityError("This trainer does not advertise target cadence control.");
+    }
+    return this.#command(targetCadenceCommand(rpm), { coalesceKey: "cadence" });
+  }
+
+  async spinDown(control: SpinDownControl): Promise<SpinDownResponse> {
+    if (!this.#requireCapabilities().supportsSpindown) {
+      throw new FtmsCapabilityError("This trainer does not advertise spin-down control.");
+    }
+    return parseSpinDownResponse(
+      await this.#command(spinDownCommand(control), { coalesceKey: "spindown" }),
+    );
   }
 
   async setResistanceLevel(level: number): Promise<ControlPointResponse> {
@@ -496,6 +526,7 @@ export class FtmsTrainer implements Trainer {
       case "simulation-parameters-changed":
       case "wheel-circumference-changed":
       case "spin-down-status":
+      case "target-cadence-changed":
       case "unknown":
         break;
     }

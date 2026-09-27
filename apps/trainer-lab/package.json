@@ -10,6 +10,7 @@
     "typecheck": "node ../../node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@garmin/fitsdk": "^21.217.0",
     "@open-trainer/ftms": "*"
   }
 }

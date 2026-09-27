@@ -94,8 +94,10 @@
                 <span id="power-caption" class="metric-caption">Live from your trainer</span>
               </div>
               <div class="target-metric">
-                <span class="metric-label">TARGET POWER</span>
-                <div><strong id="target">60</strong><span class="unit">W</span></div>
+                <span class="metric-label" id="control-label">TARGET POWER</span>
+                <div>
+                  <strong id="target">60</strong><span class="unit" id="control-unit">W</span>
+                </div>
                 <div class="target-controls">
                   <button
                     id="power-down"
@@ -144,6 +146,17 @@
                 </div>
               </div>
             </div>
+            <div id="terrain-progress" class="terrain-progress" hidden>
+              <div class="route-heading">
+                <strong id="route-title"></strong><span id="route-distance"></span>
+              </div>
+              <div
+                id="route-profile"
+                role="img"
+                aria-label="Route grade profile and rider position"
+              ></div>
+              <p id="ghost-status"></p>
+            </div>
             <div class="secondary-metrics">
               <div>
                 <span class="metric-label">CADENCE</span><strong id="cadence">—</strong
@@ -176,6 +189,14 @@
               ><button id="stop" class="button stop-button" hidden>■ End ride</button
               ><span id="action-hint">Connect your trainer to begin.</span>
             </div>
+            <div class="coaching-strip">
+              <button id="skip-interval" class="button subtle" disabled>Skip interval →</button>
+              <button id="extend-interval" class="button subtle" disabled>+1 minute</button>
+              <label><input type="checkbox" id="audio-cues" />Audio cues</label>
+              <label><input type="checkbox" id="spoken-cues" />Speak intervals</label>
+              <span id="cadence-cue"></span><span id="heart-rate">— bpm</span>
+            </div>
+            <span id="wake-status" role="status">Screen wake lock starts with your ride</span>
           </section>
 
           <aside class="setup-panel">
@@ -196,7 +217,7 @@
                 <option value="60">60 minutes</option>
               </select>
             </div>
-            <div class="settings-row">
+            <div class="settings-row" id="power-setting">
               <label for="base-power">STEADY TARGET <small>OPTIONAL</small></label>
               <div class="watts-input">
                 <input
@@ -214,6 +235,33 @@
               Leave it on Auto for a suggested starting power, or choose your own. You can adjust it
               during the ride.
             </p>
+            <div class="mode-controls">
+              <label
+                >Ride control
+                <select id="ride-mode">
+                  <option value="erg">ERG · target power</option>
+                  <option value="resistance">Resistance · your effort</option>
+                  <option value="terrain">Terrain · follow a route</option>
+                </select></label
+              >
+              <div id="terrain-setup" hidden>
+                <label
+                  >Route
+                  <select id="route-select"></select></label
+                ><label
+                  >Your ghost
+                  <select id="ghost-select">
+                    <option value="">Ride solo</option>
+                  </select></label
+                >
+              </div>
+              <p id="mode-help" class="mode-help"></p>
+              <p id="custom-workout">Choose a favorite or build your own.</p>
+              <div class="tool-actions">
+                <button id="clear-custom" class="button subtle">Use preset</button
+                ><button id="edit-current" class="button subtle" disabled>Edit workout</button>
+              </div>
+            </div>
             <div class="setup-footer">
               <span aria-hidden="true">↳</span>
               <p id="setup-footer">Your first five minutes start gently at 60 W.</p>
@@ -221,6 +269,44 @@
           </aside>
         </div>
 
+        <div class="training-tools">
+          <details class="tool-panel" id="editor-details">
+            <summary>Workout studio · make it yours</summary>
+            <div id="workout-editor" class="tool-content"></div>
+          </details>
+          <details class="tool-panel">
+            <summary>Sensors · choose your data sources</summary>
+            <div id="sensor-panel" class="tool-content"></div>
+          </details>
+          <details class="tool-panel" id="analysis-panel">
+            <summary>
+              Ride analysis · <span id="analysis-title">choose a past ride below</span>
+            </summary>
+            <div class="tool-content">
+              <div class="analysis-controls">
+                <label
+                  >Reference FTP (watts)<input
+                    id="analysis-ftp"
+                    type="number"
+                    min="25"
+                    max="600"
+                    value="200" /></label
+                ><label
+                  >Compare with<select id="compare-ride">
+                    <option>No comparison</option>
+                  </select></label
+                >
+              </div>
+              <div id="analysis-chart"></div>
+              <div id="analysis-metrics" class="analysis-metrics"></div>
+              <div id="analysis-zones"></div>
+              <p id="analysis-note">
+                Select Analyze on any saved ride. Green is actual power, grey is target, blue is
+                comparison. Cadence spread is the standard deviation of measured cadence.
+              </p>
+            </div>
+          </details>
+        </div>
         <section class="ride-bottom" aria-label="Ride statistics">
           <div>
             <span class="metric-label">DISTANCE <span class="muted">/ EST.</span></span
@@ -258,12 +344,25 @@
               <p class="eyebrow">YOUR TIME ON THE BIKE</p>
               <h2 id="history-title">Past rides</h2>
             </div>
-            <button id="export-data" class="button subtle">Export all data ↓</button>
+            <button id="export-data" class="button subtle">Export ride backup ↓</button>
           </div>
           <p class="history-note">
-            Last 30 rides, saved in this browser. No account, cloud upload, or cookies. Browser data
-            can be cleared by your browser; export a backup to keep it.
+            Up to 100 rides, saved in this browser. No account, cloud upload, or cookies. Browser
+            data can be cleared by your browser; export a backup to keep it.
           </p>
+          <details class="help">
+            <summary>Manage local ride data</summary>
+            <p id="storage-detail"></p>
+            <label class="button subtle"
+              >Merge ride backup
+              <input id="import-backup" type="file" accept=".json,application/json"
+            /></label>
+            <p id="data-status" role="status">
+              Imports merge by ride start time and preserve your current recovery. Workout favorites
+              can be exported in Workout studio. FIT exports use active ride time; paused time is
+              omitted.
+            </p>
+          </details>
           <div id="ride-history" class="ride-history"></div>
         </section>
         <details class="help">
@@ -283,9 +382,9 @@
             <li>Use Pause for a break, or End ride to stop and save. Escape also ends the ride.</li>
           </ol>
           <p>
-            The app needs an ERG-capable FTMS trainer. If your trainer isn’t listed, check its
-            firmware in the manufacturer’s app. Ride data stays in this browser. CSV export is a
-            data file, not a Strava activity upload.
+            The app needs an FTMS trainer supporting your selected control mode. If your trainer
+            isn’t listed, check its firmware in the manufacturer’s app. Ride data stays in this
+            browser. Use FIT export for compatible activity apps, or CSV for your own analysis.
           </p>
         </details>
       </main>
