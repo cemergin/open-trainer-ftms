@@ -95,13 +95,83 @@ export type MachineStatusKind =
   | "simulation-parameters-changed"
   | "wheel-circumference-changed"
   | "spin-down-status"
+  | "target-cadence-changed"
   | "control-permission-lost"
   | "unknown";
 
-export interface MachineStatus {
+/** Decoded FTMS 1.0.1 values, in the units named by each field. */
+export interface MachineStatusParameters {
+  reset: undefined;
+  "stopped-or-paused-by-user": { control: "stop" | "pause" | "unknown"; controlCode: number };
+  "stopped-by-safety-key": undefined;
+  "started-or-resumed-by-user": undefined;
+  "target-speed-changed": { speedKph: number };
+  "target-inclination-changed": { inclinationPercent: number };
+  "target-resistance-changed": { resistanceLevel: number };
+  "target-power-changed": { powerWatts: number };
+  "target-heart-rate-changed": { heartRateBpm: number };
+  "target-energy-changed": { energyKcal: number };
+  "target-steps-changed": { steps: number };
+  "target-strides-changed": { strides: number };
+  "target-distance-changed": { distanceMeters: number };
+  "target-training-time-changed": { timeSeconds: number };
+  "target-time-two-heart-rate-zones-changed": { fatBurnSeconds: number; fitnessSeconds: number };
+  "target-time-three-heart-rate-zones-changed": {
+    lightSeconds: number;
+    moderateSeconds: number;
+    hardSeconds: number;
+  };
+  "target-time-five-heart-rate-zones-changed": {
+    veryLightSeconds: number;
+    lightSeconds: number;
+    moderateSeconds: number;
+    hardSeconds: number;
+    maximumSeconds: number;
+  };
+  "simulation-parameters-changed": Required<SimulationParameters>;
+  "wheel-circumference-changed": { circumferenceMm: number };
+  "spin-down-status": {
+    status: "requested" | "success" | "error" | "stop-pedaling" | "unknown";
+    statusCode: number;
+  };
+  "target-cadence-changed": { cadenceRpm: number };
+  "control-permission-lost": undefined;
+  unknown: undefined;
+}
+
+export type MachineStatus = {
+  [Kind in MachineStatusKind]: {
+    readonly opcode: number;
+    readonly kind: Kind;
+    /** Original bytes, including values reserved for future use. */
+    readonly parameters: Uint8Array;
+    /** Present for known parameter-bearing statuses parsed by this library. */
+    readonly decodedParameters?: MachineStatusParameters[Kind];
+  };
+}[MachineStatusKind];
+
+export type SpinDownControl = "start" | "ignore";
+
+/** Command acceptance and target speed window; completion arrives in Machine Status. */
+export interface SpinDownResponse extends ControlPointResponse {
+  readonly targetSpeedLowKph: number;
+  readonly targetSpeedHighKph: number;
+}
+
+export type CommandPhase =
+  "queued" | "sent" | "acknowledged" | "rejected" | "timedout" | "superseded" | "cancelled";
+
+export interface CommandEvent {
+  /** Monotonically increasing for the lifetime of this trainer, including reconnects. */
+  readonly id: number;
   readonly opcode: number;
-  readonly kind: MachineStatusKind;
-  readonly parameters: Uint8Array;
+  readonly phase: CommandPhase;
+  /** Monotonic milliseconds since this command was queued. */
+  readonly elapsedMs: number;
+  /** Monotonic milliseconds since dispatch to the transport, when dispatched. */
+  readonly latencyMs?: number;
+  readonly resultCode?: number;
+  readonly errorCode?: string;
 }
 
 export interface SimulationParameters {
@@ -135,6 +205,7 @@ export interface Trainer {
   readonly capabilities: StateValue<TrainerCapabilities | null>;
   readonly telemetry: StateValue<TrainerTelemetry | null>;
   readonly controlResponses: Stream<ControlPointResponse>;
+  readonly commandEvents: Stream<CommandEvent>;
   /** Raw Machine Status bytes, retained for protocol extensions and diagnostics. */
   readonly machineStatus: Stream<Uint8Array>;
   /** Parsed lifecycle statuses. Unknown opcodes are preserved rather than discarded. */
@@ -149,6 +220,8 @@ export interface Trainer {
   stop(): Promise<ControlPointResponse>;
   reset(): Promise<ControlPointResponse>;
   setTargetPower(watts: number): Promise<ControlPointResponse>;
+  setTargetCadence(rpm: number): Promise<ControlPointResponse>;
+  spinDown(control: SpinDownControl): Promise<SpinDownResponse>;
   setResistanceLevel(level: number): Promise<ControlPointResponse>;
   setSimulation(parameters: SimulationParameters): Promise<ControlPointResponse>;
 }

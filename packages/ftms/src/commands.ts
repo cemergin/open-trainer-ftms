@@ -1,5 +1,5 @@
 import { FtmsRangeError } from "./errors.js";
-import type { ResistanceControlFormat, SimulationParameters } from "./types.js";
+import type { ResistanceControlFormat, SimulationParameters, SpinDownControl } from "./types.js";
 
 export const CONTROL_OPCODE = {
   requestControl: 0x00,
@@ -9,6 +9,8 @@ export const CONTROL_OPCODE = {
   startResume: 0x07,
   stopPause: 0x08,
   setSimulation: 0x11,
+  spinDown: 0x13,
+  setTargetCadence: 0x14,
 } as const;
 
 function assertIntegerRange(value: number, minimum: number, maximum: number, label: string): void {
@@ -83,4 +85,19 @@ export function simulationCommand(parameters: SimulationParameters): Uint8Array 
   view.setUint8(5, rollingResistance);
   view.setUint8(6, windResistance);
   return bytes;
+}
+
+export function targetCadenceCommand(rpm: number): Uint8Array {
+  assertIntegerRange(rpm * 2, 0, 65535, "Target cadence in half-RPM units");
+  const bytes = new Uint8Array(3);
+  bytes[0] = CONTROL_OPCODE.setTargetCadence;
+  new DataView(bytes.buffer).setUint16(1, rpm * 2, true);
+  return bytes;
+}
+
+export function spinDownCommand(control: SpinDownControl): Uint8Array {
+  if (!["start", "ignore"].includes(control)) {
+    throw new FtmsRangeError("Spin-down control must be start or ignore.");
+  }
+  return Uint8Array.of(CONTROL_OPCODE.spinDown, control === "start" ? 0x01 : 0x02);
 }

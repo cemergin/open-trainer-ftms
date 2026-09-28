@@ -1,6 +1,7 @@
 /** Application boundary for trainer adapters, local persistence, and browser capabilities. */
 import { createMockTrainer } from "@open-trainer/ftms/testing";
 import { createWebBluetoothTrainer } from "@open-trainer/ftms/web-bluetooth";
+import type { RideRecord } from "../ride";
 import type { Trainer } from "@open-trainer/ftms";
 
 export { FtmsCommandSupersededError } from "@open-trainer/ftms";
@@ -21,6 +22,10 @@ export {
   clearCheckpoint,
   exportAllData,
   RIDE_HISTORY_LIMIT,
+  importRideBackup,
+  deleteRide,
+  rideStorageInfo,
+  BACKUP_BYTE_LIMIT,
   type RideCheckpoint,
 } from "../storage";
 
@@ -37,13 +42,29 @@ export function bluetoothSupported(): boolean {
   return Boolean(navigator.bluetooth) && window.isSecureContext;
 }
 
+export type WakeStatus = "inactive" | "requesting" | "active" | "unavailable";
+let wakeStatus: WakeStatus = "inactive";
+export function screenAwakeStatus(): WakeStatus {
+  return wakeStatus;
+}
+
 let wakeLock: WakeLockSentinel | undefined;
 let wakeRequestPending = false;
 let shouldStayAwake = false;
+let wasVisible = true;
+let nextWakeAttempt = 0;
+const WAKE_RETRY_DELAY_MS = 30_000;
 
+/** Browsers may refuse wake locks, and hidden documents cannot keep the screen awake. */
 export async function keepScreenAwake(active: boolean): Promise<void> {
+  const resumed = active && !shouldStayAwake;
+  const visible = document.visibilityState === "visible";
+  const becameVisible = visible && !wasVisible;
+  wasVisible = visible;
   shouldStayAwake = active;
+  if (resumed || becameVisible || !active) nextWakeAttempt = 0;
   if (!active) {
+    wakeStatus = "inactive";
     if (wakeLock) {
       const lock = wakeLock;
       wakeLock = undefined;
@@ -52,20 +73,41 @@ export async function keepScreenAwake(active: boolean): Promise<void> {
     return;
   }
   const browser: Partial<Navigator> = navigator;
-  if (!browser.wakeLock || wakeLock || wakeRequestPending || document.visibilityState !== "visible")
+  if (!browser.wakeLock || !visible) {
+    wakeStatus = "unavailable";
     return;
+  }
+  if (wakeLock) {
+    wakeStatus = "active";
+    return;
+  }
+  if (wakeRequestPending) {
+    wakeStatus = "requesting";
+    return;
+  }
+  if (Date.now() < nextWakeAttempt) return;
   wakeRequestPending = true;
+  wakeStatus = "requesting";
   try {
     const lock = await browser.wakeLock.request("screen");
-    if (!shouldStayAwake) {
+    if (!shouldStayAwake || document.visibilityState !== "visible" || lock.released) {
+      wakeStatus = shouldStayAwake ? "unavailable" : "inactive";
+      nextWakeAttempt = Date.now() + WAKE_RETRY_DELAY_MS;
       await lock.release();
       return;
     }
     wakeLock = lock;
+    wakeStatus = "active";
     lock.addEventListener("release", () => {
-      if (wakeLock === lock) wakeLock = undefined;
+      if (wakeLock === lock) {
+        wakeLock = undefined;
+        wakeStatus = shouldStayAwake ? "unavailable" : "inactive";
+        nextWakeAttempt = Date.now() + WAKE_RETRY_DELAY_MS;
+      }
     });
   } catch {
+    wakeStatus = shouldStayAwake ? "unavailable" : "inactive";
+    nextWakeAttempt = Date.now() + WAKE_RETRY_DELAY_MS;
     /* Wake lock is optional; local riding and controls remain available. */
   } finally {
     wakeRequestPending = false;
@@ -74,7 +116,19 @@ export async function keepScreenAwake(active: boolean): Promise<void> {
 
 /** Download stays at the browser-service boundary so views do not manage object URLs. */
 export function downloadText(content: string, filename: string, mime: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  downloadBlob(new Blob([content], { type: mime }), filename);
+}
+
+export function downloadBytes(
+  content: Uint8Array<ArrayBuffer>,
+  filename: string,
+  mime: string,
+): void {
+  downloadBlob(new Blob([content], { type: mime }), filename);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -129,3 +183,43 @@ export function qualificationClient(): {
     secureContext: window.isSecureContext,
   };
 }
+
+export {
+  SensorManager,
+  type SensorMetric,
+  type TelemetrySource,
+  type SensorSources,
+  type SensorSlot,
+  type SensorManagerState,
+  type ResolvedTelemetry,
+  type SensorKind,
+  type SensorState,
+  type SensorTelemetry,
+} from "./sensors";
+export {
+  loadWorkoutProfiles,
+  saveWorkoutProfile,
+  removeWorkoutProfile,
+  parseWorkoutJson,
+  exportWorkoutJson,
+  WORKOUT_PROFILE_LIMIT,
+  WORKOUT_JSON_LIMIT,
+} from "./workouts";
+export async function rideFit(record: RideRecord): Promise<Uint8Array<ArrayBuffer>> {
+  const fit = await import("./fit");
+  return fit.rideFit(record);
+}
+export { RideCoach } from "./coaching";
+
+export type { CommandEvent, MachineStatus, SpinDownResponse } from "@open-trainer/ftms";
+export {
+  createLabConnection,
+  parseLabTrace,
+  readLabTraceFile,
+  LabReplay,
+  LAB_TRACE_BYTE_LIMIT,
+  type LabFault,
+  type LabConnection,
+} from "./lab-trace";
+
+export type { SensorSourceSnapshot, SensorMetricSource } from "./sensors";

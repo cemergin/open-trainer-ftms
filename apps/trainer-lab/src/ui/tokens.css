@@ -17,6 +17,11 @@
   --color-border-strong: #475141;
   --color-border-selected: #8d9c62;
   --color-accent: #d3f477;
+  --color-spice-mild: #d3f477;
+  --color-spice-spicy: #f7b880;
+  --color-spice-hot: #f49c89;
+  --color-chart-power: var(--color-accent);
+  --color-chart-heart-rate: #f4a3b4;
   --color-accent-subtle: #d3f47709;
   --color-accent-halo: #d3f47710;
   --color-status-idle: #727d76;

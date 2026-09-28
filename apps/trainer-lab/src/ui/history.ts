@@ -5,6 +5,11 @@ export function renderRideHistory(
   container: HTMLElement,
   records: RideRecord[],
   download: (record: RideRecord) => void,
+  actions?: {
+    analyze: (record: RideRecord) => void;
+    exportFit: (record: RideRecord) => void;
+    remove: (record: RideRecord) => void;
+  },
 ): void {
   container.replaceChildren();
   if (!records.length) {
@@ -43,7 +48,37 @@ export function renderRideHistory(
     button.textContent = "CSV ↓";
     button.setAttribute("aria-label", `Download ${record.name} from ${date.textContent}`);
     button.addEventListener("click", () => download(record));
-    row.append(name, duration, power, button);
+    const buttons = document.createElement("div");
+    buttons.className = "history-actions";
+    buttons.append(button);
+    if (actions) {
+      for (const [label, action] of [
+        ["Analyze", actions.analyze],
+        ["FIT ↓", actions.exportFit],
+      ] as const) {
+        const control = document.createElement("button");
+        control.className = "button subtle";
+        control.textContent = label;
+        control.addEventListener("click", () => action(record));
+        buttons.append(control);
+      }
+      const remove = document.createElement("button");
+      remove.className = "button subtle";
+      remove.textContent = "Delete";
+      let confirmUntil = 0;
+      remove.addEventListener("click", () => {
+        if (Date.now() < confirmUntil) actions.remove(record);
+        else {
+          confirmUntil = Date.now() + 5000;
+          remove.textContent = "Confirm delete";
+          setTimeout(() => {
+            remove.textContent = "Delete";
+          }, 5000);
+        }
+      });
+      buttons.append(remove);
+    }
+    row.append(name, duration, power, buttons);
     container.append(row);
   }
 }

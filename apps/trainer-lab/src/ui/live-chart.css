@@ -1,0 +1,147 @@
+.live-chart-panel {
+  min-width: 0;
+  margin: var(--space-6) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-inset);
+}
+
+.live-chart-heading,
+.live-chart-scales,
+.live-chart-time,
+.live-chart-keys {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.live-chart-heading,
+.live-chart-scales,
+.live-chart-time {
+  color: var(--color-text-muted);
+  font: var(--text-caption) var(--font-mono);
+}
+
+.live-chart-heading {
+  margin-bottom: var(--space-4);
+}
+
+.live-chart-keys {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-small);
+}
+
+.live-chart-keys span::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  margin-right: var(--space-2);
+  border-top: 2px solid currentColor;
+  vertical-align: middle;
+}
+
+.live-chart-power {
+  color: var(--color-chart-power);
+}
+
+.live-chart-heart {
+  color: var(--color-chart-heart-rate);
+}
+
+#live-chart-target-key {
+  color: var(--color-text-muted);
+}
+
+#live-chart-target-key::before {
+  border-top-style: dashed;
+}
+
+.live-chart-keys strong {
+  margin-left: var(--space-1);
+  font-family: var(--font-mono);
+}
+
+.live-chart-panel svg {
+  display: block;
+  width: 100%;
+  height: 140px;
+  margin: var(--space-2) 0;
+  overflow: visible;
+}
+
+.live-chart-panel path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.live-chart-grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.live-chart-line {
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#live-chart-power {
+  stroke: var(--color-chart-power);
+}
+
+#live-chart-heartRate {
+  stroke: var(--color-chart-heart-rate);
+}
+
+#live-chart-target {
+  stroke: var(--color-text-muted);
+  stroke-dasharray: 5 5;
+  stroke-width: 1;
+}
+
+.live-chart-panel figcaption {
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}
+
+#live-chart-heart-help {
+  display: block;
+}
+
+@media (min-width: 900px) {
+  body.riding .live-chart-panel {
+    grid-column: 2;
+    grid-row: 5 / 8;
+    margin: var(--space-3) 0;
+    padding: var(--space-3);
+  }
+  body.riding .live-chart-panel svg {
+    height: 100px;
+  }
+  body.riding .live-chart-heading,
+  body.riding .live-chart-keys {
+    margin-bottom: var(--space-2);
+  }
+  body.riding .profile-heading {
+    grid-column: 1;
+    grid-row: 5;
+    align-self: end;
+  }
+  body.riding .workout-profile {
+    grid-column: 1;
+    grid-row: 6;
+    align-self: center;
+  }
+  body.riding .profile-axis {
+    grid-column: 1;
+    grid-row: 7;
+    align-self: start;
+  }
+}

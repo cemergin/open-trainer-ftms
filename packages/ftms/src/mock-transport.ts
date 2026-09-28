@@ -11,6 +11,8 @@ function dataView(bytes: Uint8Array): DataView {
 export interface MockFtmsTransportOptions {
   controlResponseDelayMs?: number;
   resistanceControlFormat?: "sint16" | "uint8";
+  supportsTargetCadence?: boolean;
+  supportsSpindown?: boolean;
 }
 
 export class MockFtmsTransport implements FtmsTransport {
@@ -24,8 +26,12 @@ export class MockFtmsTransport implements FtmsTransport {
   #controlled = false;
   #running = false;
   #targetPower = 140;
+  #controlMode: "power" | "resistance" | "simulation" = "power";
+  #grade = 0;
   #power = 0;
   #cadence = 0;
+  #targetCadence = 86;
+  #generation = 0;
   #speed = 0;
   #resistance = 0;
   #distance = 0;
@@ -62,6 +68,7 @@ export class MockFtmsTransport implements FtmsTransport {
   async disconnect(): Promise<void> {
     if (!this.#connected) return;
     this.#connected = false;
+    this.#generation += 1;
     this.#controlled = false;
     this.#running = false;
     if (this.#timer) clearInterval(this.#timer);
@@ -77,7 +84,15 @@ export class MockFtmsTransport implements FtmsTransport {
       const bytes = new Uint8Array(8);
       const view = new DataView(bytes.buffer);
       view.setUint32(0, (1 << 1) | (1 << 7) | (1 << 14), true);
-      view.setUint32(4, (1 << 2) | (1 << 3) | (1 << 13), true);
+      view.setUint32(
+        4,
+        (1 << 2) |
+          (1 << 3) |
+          (1 << 13) |
+          (this.options.supportsTargetCadence ? 1 << 16 : 0) |
+          (this.options.supportsSpindown ? 1 << 15 : 0),
+        true,
+      );
       return view;
     }
 
@@ -116,6 +131,7 @@ export class MockFtmsTransport implements FtmsTransport {
     this.#commandHistory.push(opcode);
     let result: number = CONTROL_RESULT.success;
     let machineStatus: Uint8Array | undefined;
+    let responseParameters: number[] = [];
 
     switch (opcode) {
       case CONTROL_OPCODE.requestControl:
@@ -143,20 +159,26 @@ export class MockFtmsTransport implements FtmsTransport {
       case CONTROL_OPCODE.setTargetPower:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
         else if (value.byteLength < 3) result = CONTROL_RESULT.invalidParameter;
-        else
+        else {
+          this.#controlMode = "power";
           this.#targetPower = new DataView(
             value.buffer,
             value.byteOffset,
             value.byteLength,
           ).getInt16(1, true);
+        }
         break;
       case CONTROL_OPCODE.setTargetResistance:
         if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
         else if ((this.options.resistanceControlFormat ?? "sint16") === "uint8") {
           if (value.byteLength < 2) result = CONTROL_RESULT.invalidParameter;
-          else this.#resistance = (value[1] ?? 0) / 10;
+          else {
+            this.#controlMode = "resistance";
+            this.#resistance = (value[1] ?? 0) / 10;
+          }
         } else if (value.byteLength < 3) result = CONTROL_RESULT.invalidParameter;
         else {
+          this.#controlMode = "resistance";
           this.#resistance =
             new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(1, true) / 10;
         }
@@ -167,15 +189,41 @@ export class MockFtmsTransport implements FtmsTransport {
         else {
           const grade =
             new DataView(value.buffer, value.byteOffset, value.byteLength).getInt16(3, true) / 100;
-          this.#targetPower = Math.max(60, 130 + grade * 18);
+          this.#controlMode = "simulation";
+          this.#grade = grade;
+        }
+        break;
+      case CONTROL_OPCODE.setTargetCadence:
+        if (!this.options.supportsTargetCadence) result = CONTROL_RESULT.notSupported;
+        else if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
+        else if (value.byteLength !== 3) result = CONTROL_RESULT.invalidParameter;
+        else {
+          this.#targetCadence =
+            new DataView(value.buffer, value.byteOffset, value.byteLength).getUint16(1, true) / 2;
+          machineStatus = Uint8Array.of(0x15, value[1] ?? 0, value[2] ?? 0);
+        }
+        break;
+      case CONTROL_OPCODE.spinDown:
+        if (!this.options.supportsSpindown) result = CONTROL_RESULT.notSupported;
+        else if (!this.#controlled) result = CONTROL_RESULT.controlNotPermitted;
+        else if (value.byteLength !== 2 || (value[1] !== 1 && value[1] !== 2))
+          result = CONTROL_RESULT.invalidParameter;
+        else {
+          responseParameters = [0xd0, 0x07, 0xb8, 0x0b];
+          if (value[1] === 1) machineStatus = Uint8Array.of(0x14, 0x01);
         }
         break;
       default:
         result = CONTROL_RESULT.notSupported;
     }
 
+    const generation = this.#generation;
     const respond = (): void => {
-      this.#emit(FTMS_UUIDS.controlPoint, Uint8Array.of(0x80, opcode, result));
+      if (!this.#connected || generation !== this.#generation) return;
+      this.#emit(
+        FTMS_UUIDS.controlPoint,
+        Uint8Array.of(0x80, opcode, result, ...responseParameters),
+      );
       if (result === CONTROL_RESULT.success && machineStatus) {
         this.#emit(FTMS_UUIDS.machineStatus, machineStatus);
       }
@@ -229,9 +277,17 @@ export class MockFtmsTransport implements FtmsTransport {
     const deltaSeconds = Math.min((now - this.#lastTick) / 1000, 1);
     this.#lastTick = now;
 
-    const desiredPower = this.#running ? this.#targetPower : 0;
+    // Deterministic demonstration values, not a model of rider or trainer physics.
+    const modePower =
+      this.#controlMode === "power"
+        ? this.#targetPower
+        : this.#controlMode === "resistance"
+          ? 60 + this.#resistance * 12
+          : 130 + this.#grade * 18;
+    const desiredPower = this.#running ? Math.max(0, Math.min(modePower, 1800)) : 0;
     this.#power += (desiredPower - this.#power) * Math.min(deltaSeconds * 2.2, 1);
-    this.#cadence += ((this.#running ? 86 : 0) - this.#cadence) * Math.min(deltaSeconds * 2, 1);
+    this.#cadence +=
+      ((this.#running ? this.#targetCadence : 0) - this.#cadence) * Math.min(deltaSeconds * 2, 1);
     this.#speed +=
       ((this.#running ? 12 + this.#power * 0.085 : 0) - this.#speed) *
       Math.min(deltaSeconds * 1.5, 1);

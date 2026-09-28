@@ -610,3 +610,38 @@ footer > span {
     scroll-behavior: auto !important;
   }
 }
+
+.trace-tools {
+  display: flex;
+  gap: var(--space-4);
+  align-items: end;
+  flex-wrap: wrap;
+}
+.trace-tools label {
+  display: grid;
+  gap: var(--space-2);
+  flex: 1 1 260px;
+}
+.trace-tools select,
+.trace-tools input {
+  width: 100%;
+  padding: var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+#command-events {
+  max-height: 16rem;
+  overflow: auto;
+}
+#decoded-status {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#spindown-support {
+  display: block;
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}

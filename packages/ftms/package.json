@@ -43,6 +43,10 @@
     "./raw": {
       "types": "./dist/raw.d.ts",
       "import": "./dist/raw.js"
+    },
+    "./sensors": {
+      "types": "./dist/sensors.d.ts",
+      "import": "./dist/sensors.js"
     }
   },
   "scripts": {

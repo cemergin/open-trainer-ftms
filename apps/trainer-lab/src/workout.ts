@@ -52,16 +52,21 @@ export const WORKOUT_OPTIONS = [
   },
 ] as const;
 export type WorkoutMode = (typeof WORKOUT_OPTIONS)[number]["id"];
+export type SpiceLevel = "mild" | "spicy" | "hot";
 export interface WorkoutStep {
   name: string;
   seconds: number;
   watts: number;
+  endWatts?: number;
+  cadenceRpm?: number;
   effort: "easy" | "steady" | "hard";
 }
 export interface Workout {
   name: string;
   steps: WorkoutStep[];
   seconds: number | null;
+  referenceWatts?: number;
+  spice?: { mode: Exclude<WorkoutMode, "free">; variation: number; level?: SpiceLevel };
 }
 
 type ProfileStep = readonly [name: string, factor: number, effort: WorkoutStep["effort"]];
@@ -121,7 +126,12 @@ export function createWorkout(mode: WorkoutMode, minutes: number, watts: number)
     effort: WorkoutStep["effort"],
   ): WorkoutStep => ({ name, seconds, watts: Math.round(watts * factor), effort });
   if (mode === "free")
-    return { name: "Free ride", seconds: null, steps: [step("Your pace", Infinity, 1, "steady")] };
+    return {
+      name: "Free ride",
+      seconds: null,
+      steps: [step("Your pace", Infinity, 1, "steady")],
+      referenceWatts: watts,
+    };
   const seconds = minutes * 60;
   const bookend = Math.min(300, seconds / 6);
   const middle = seconds - bookend * 2;
@@ -132,7 +142,7 @@ export function createWorkout(mode: WorkoutMode, minutes: number, watts: number)
   steps.push(step("Cool down", bookend, 0.5, "easy"));
   const option = WORKOUT_OPTIONS.find((option) => option.id === mode);
   if (!option) throw new Error("Choose an available workout.");
-  return { name: option.name, steps, seconds };
+  return { name: option.name, steps, seconds, referenceWatts: watts };
 }
 
 export function currentStep(
@@ -142,7 +152,12 @@ export function currentStep(
   let start = 0;
   for (const [index, step] of workout.steps.entries()) {
     if (elapsed < start + step.seconds || index === workout.steps.length - 1) {
-      return { step, index, remaining: Math.max(0, start + step.seconds - elapsed) };
+      const progress = Math.min(1, Math.max(0, (elapsed - start) / step.seconds));
+      const target =
+        step.endWatts === undefined
+          ? step
+          : { ...step, watts: step.watts + (step.endWatts - step.watts) * progress };
+      return { step: target, index, remaining: Math.max(0, start + step.seconds - elapsed) };
     }
     start += step.seconds;
   }

@@ -1,5 +1,23 @@
-import type { Trainer, TrainerTelemetry, Unsubscribe } from "./services";
+import type { Trainer, TrainerTelemetry, Unsubscribe, SensorSourceSnapshot } from "./services";
+import {
+  supportsMode,
+  resistanceTarget,
+  terrainTarget,
+  type RideControlMode,
+  type RideOptions,
+} from "./ride-control";
+import { findRoute } from "./routes";
 import { currentStep, trainerWatts, type Workout } from "./workout";
+import {
+  INTENSITY_STEP,
+  MAX_INTENSITY,
+  MIN_INTENSITY,
+  validWorkoutIntensity,
+  workoutTarget,
+} from "./workout-intensity";
+import { validWorkoutCadence, validWorkoutPower, WORKOUT_LIMITS } from "./workout-profile";
+
+const AUTO_PAUSE_DELAY_MS = 20_000;
 
 export type RideStatus =
   "ready" | "starting" | "riding" | "paused" | "stopping" | "finished" | "interrupted";
@@ -9,6 +27,10 @@ export interface RideSample {
   cadence: number | null;
   speed: number | null;
   target: number;
+  heartRate?: number | null;
+  distanceKm?: number;
+  grade?: number;
+  resistance?: number;
 }
 export interface RideRecord {
   version: 1;
@@ -22,19 +44,33 @@ export interface RideRecord {
   measuredSeconds?: number;
   completed: boolean;
   samples: RideSample[];
+  controlMode?: RideControlMode;
+  routeId?: string;
+  workoutElapsed?: number;
+  controlTarget?: number;
+  intensity?: number;
+  sourceChanges?: { seconds: number; sources: SensorSourceSnapshot }[];
 }
 
 export class Ride {
   status: RideStatus = "ready";
   workout: Workout | undefined;
   elapsed = 0;
+  workoutElapsed = 0;
+  controlMode: RideControlMode = "erg";
+  routeId: string | undefined;
+  controlTarget = 0;
+  resistance = 5;
   target = 0;
   adjustment = 0;
+  intensity = 100;
   error = "";
   distanceKm = 0;
   workKj = 0;
   readonly samples: RideSample[] = [];
   startedAt = "";
+  readonly #sourceChanges: { seconds: number; sources: SensorSourceSnapshot }[] = [];
+  #sourceKey = "";
   #measuredSeconds = 0;
   #lastTick = 0;
   #lastTelemetry = -Infinity;
@@ -50,6 +86,9 @@ export class Ride {
     readonly trainer: Trainer,
     readonly simulator: boolean,
     private readonly now = () => Date.now(),
+    private readonly resolveTelemetry: (value: TrainerTelemetry) => TrainerTelemetry = (value) =>
+      value,
+    private readonly sourceSnapshot?: () => SensorSourceSnapshot,
   ) {
     this.#subscriptions = [
       trainer.telemetry.subscribe((value) => {
@@ -74,44 +113,70 @@ export class Ride {
   get active(): boolean {
     return ["starting", "riding", "paused", "stopping"].includes(this.status);
   }
+  get autoPauseSeconds(): number | null {
+    if (this.status !== "riding" || this.#lowCadenceSince === undefined) return null;
+    return Math.max(
+      0,
+      Math.ceil((AUTO_PAUSE_DELAY_MS - (this.now() - this.#lowCadenceSince)) / 1000),
+    );
+  }
   get averagePower(): number | null {
     return this.#measuredSeconds > 0
       ? Math.round((this.workKj * 1000) / this.#measuredSeconds)
       : null;
   }
   get telemetry(): TrainerTelemetry | null {
-    return this.now() - this.#lastTelemetry <= 5000 ? this.trainer.telemetry.current : null;
+    const telemetry =
+      this.now() - this.#lastTelemetry <= 5000 ? this.trainer.telemetry.current : null;
+    return telemetry ? this.resolveTelemetry(telemetry) : null;
   }
 
   restore(workout: Workout, record: RideRecord, adjustment = 0): void {
     if (this.status !== "ready" || this.busy)
       throw new Error("Only a new ride can restore a checkpoint.");
     const measuredSeconds = checkpointMeasuredSeconds(workout, record, this.simulator, adjustment);
-    const target = trainerWatts(
-      currentStep(workout, record.seconds).step.watts + adjustment,
+    const intensity = record.intensity ?? 100;
+    const target = workoutTarget(
+      currentStep(workout, record.workoutElapsed ?? record.seconds).step.watts,
+      intensity,
+      adjustment,
       this.trainer.capabilities.current?.powerRange,
     );
     this.workout = workout;
     this.startedAt = record.startedAt;
     this.elapsed = record.seconds;
+    this.workoutElapsed = record.workoutElapsed ?? record.seconds;
+    this.controlMode = record.controlMode ?? "erg";
+    this.routeId = record.routeId;
+    this.resistance = record.controlMode === "resistance" ? (record.controlTarget ?? 5) : 5;
     this.distanceKm = record.distanceKm;
     this.workKj = record.workKj;
     this.#measuredSeconds = measuredSeconds;
     this.samples.push(...record.samples.map((sample) => ({ ...sample })));
+    this.#sourceChanges.push(...(record.sourceChanges ?? []));
+    this.#sourceKey = JSON.stringify(this.#sourceChanges.at(-1)?.sources ?? null);
     this.#lastSample = Math.floor(this.samples.at(-1)?.seconds ?? -1);
     this.adjustment = adjustment;
-    this.target = target;
+    this.intensity = intensity;
+    this.target = this.controlMode === "erg" ? target : 0;
+    this.controlTarget = this.#desiredTarget();
     this.status = "paused";
     this.error = "Ride recovered and paused. Resume when you are ready to pedal.";
   }
 
-  async start(workout: Workout): Promise<void> {
+  async start(workout: Workout, options: RideOptions = {}): Promise<void> {
     if (this.status !== "ready" || this.busy) return;
-    if (!this.trainer.capabilities.current?.supportsPowerTarget) {
-      this.error =
-        "This trainer does not support ERG power control. Open Trainer Lab for its available controls.";
+    const controlMode = options.controlMode ?? "erg";
+    if (!supportsMode(this.trainer.capabilities.current, controlMode)) {
+      this.error = `This trainer does not support ${controlMode === "erg" ? "ERG" : controlMode} control. Choose an available ride mode.`;
       return;
     }
+    this.controlMode = controlMode;
+    this.routeId = controlMode === "terrain" ? findRoute(options.routeId).id : undefined;
+    this.resistance = resistanceTarget(
+      options.resistance ?? 5,
+      this.trainer.capabilities.current?.resistanceRange,
+    );
     this.workout = workout;
     this.startedAt = new Date().toISOString();
     this.status = "starting";
@@ -128,6 +193,10 @@ export class Ride {
 
   async resume(): Promise<void> {
     if (this.status !== "paused" || this.busy) return;
+    if (!supportsMode(this.trainer.capabilities.current, this.controlMode)) {
+      this.error = `This trainer does not support the recovered ${this.controlMode} ride.`;
+      return;
+    }
     this.status = "starting";
     await this.#operate(async (epoch) => {
       if (this.trainer.control.current !== "owned") await this.trainer.acquireControl();
@@ -168,16 +237,103 @@ export class Ride {
   }
 
   async adjust(watts: number): Promise<void> {
-    if (!this.workout || !["riding", "paused"].includes(this.status) || this.busy) return;
-    const base = currentStep(this.workout, this.elapsed).step.watts;
+    if (
+      !this.workout ||
+      !["riding", "paused"].includes(this.status) ||
+      this.busy ||
+      !Number.isFinite(watts)
+    )
+      return;
+    if (this.controlMode !== "erg") {
+      if (this.controlMode === "terrain")
+        this.adjustment = Math.max(-5, Math.min(5, this.adjustment + Math.sign(watts) * 0.5));
+      else
+        this.resistance = resistanceTarget(
+          this.resistance +
+            Math.sign(watts) *
+              Math.max(1, this.trainer.capabilities.current?.resistanceRange?.increment ?? 1),
+          this.trainer.capabilities.current?.resistanceRange,
+        );
+      if (this.status === "paused") this.controlTarget = this.#desiredTarget();
+      else await this.#operate((epoch) => this.#sendTarget(epoch));
+      return;
+    }
+    const base = currentStep(this.workout, this.workoutElapsed).step.watts;
     const range = this.trainer.capabilities.current?.powerRange;
     const change = Math.sign(watts) * Math.max(Math.abs(watts), range?.increment ?? 1);
-    this.adjustment = trainerWatts(this.target + change, range) - base;
+    this.adjustment = (trainerWatts(this.target + change, range) * 100) / this.intensity - base;
     if (this.status === "paused") {
-      this.target = this.#desiredTarget();
+      this.target = this.controlTarget = this.#desiredTarget();
       return;
     }
     await this.#operate((epoch) => this.#sendTarget(epoch));
+  }
+
+  async adjustIntensity(delta: number): Promise<void> {
+    if (
+      !this.workout ||
+      this.controlMode !== "erg" ||
+      !["riding", "paused"].includes(this.status) ||
+      this.busy ||
+      !Number.isFinite(delta)
+    )
+      return;
+    const intensity = Math.max(
+      MIN_INTENSITY,
+      Math.min(
+        MAX_INTENSITY,
+        Math.round((this.intensity + delta) / INTENSITY_STEP) * INTENSITY_STEP,
+      ),
+    );
+    if (intensity === this.intensity) return;
+    this.intensity = intensity;
+    if (this.status === "paused") {
+      this.target = this.controlTarget = this.#desiredTarget();
+      return;
+    }
+    await this.#operate((epoch) => this.#sendTarget(epoch));
+  }
+
+  async skipInterval(): Promise<void> {
+    if (!this.workout) return;
+    if (this.workout.seconds === null || !["riding", "paused"].includes(this.status) || this.busy)
+      return;
+    this.workoutElapsed += currentStep(this.workout, this.workoutElapsed).remaining;
+    if (this.workoutElapsed >= this.workout.seconds) await this.finish();
+    else if (this.status === "riding") await this.#operate((epoch) => this.#sendTarget(epoch));
+    else {
+      this.controlTarget = this.#desiredTarget();
+      this.target = this.controlMode === "erg" ? this.controlTarget : 0;
+    }
+  }
+
+  extendInterval(seconds = 60): void {
+    if (!this.workout) return;
+    if (
+      this.workout.seconds === null ||
+      !["riding", "paused"].includes(this.status) ||
+      this.busy ||
+      !Number.isFinite(seconds) ||
+      seconds <= 0 ||
+      seconds > 600
+    )
+      return;
+    const expandedSeconds = this.workout.steps.reduce((total, step) => total + step.seconds, 0);
+    if (
+      this.workout.seconds + seconds > WORKOUT_LIMITS.seconds ||
+      expandedSeconds + seconds > WORKOUT_LIMITS.seconds
+    ) {
+      this.error = "A workout cannot exceed 24 hours.";
+      return;
+    }
+    const index = currentStep(this.workout, this.workoutElapsed).index;
+    this.workout = {
+      ...this.workout,
+      seconds: this.workout.seconds + seconds,
+      steps: this.workout.steps.map((step, i) =>
+        i === index ? { ...step, seconds: step.seconds + seconds } : step,
+      ),
+    };
   }
 
   async tick(): Promise<void> {
@@ -199,20 +355,23 @@ export class Ride {
       return;
     }
     const cadence = this.telemetry?.instantaneousCadenceRpm;
-    if (cadence !== undefined && cadence < 20 && now - this.#resumedAt > 10000) {
+    if (cadence !== undefined && cadence < 20) {
       this.#lowCadenceSince ??= now;
-      if (now - this.#lowCadenceSince >= 4000) {
-        await this.pause("Pedaling stopped. Ride paused; start pedaling before you resume.");
+      if (now - this.#lowCadenceSince >= AUTO_PAUSE_DELAY_MS) {
+        await this.pause(
+          "Pedaling stopped for 20 seconds. Ride paused; start pedaling, then press Resume ride.",
+        );
         return;
       }
     } else this.#lowCadenceSince = undefined;
 
-    const seconds = Math.min(delta, (this.workout.seconds ?? Infinity) - this.elapsed);
+    const seconds = Math.min(delta, (this.workout.seconds ?? Infinity) - this.workoutElapsed);
     this.elapsed += seconds;
+    this.workoutElapsed += seconds;
     this.#record(seconds);
-    if (this.workout.seconds !== null && this.elapsed >= this.workout.seconds) {
+    if (this.workout.seconds !== null && this.workoutElapsed >= this.workout.seconds) {
       await this.finish();
-    } else if (!this.busy && this.#desiredTarget() !== this.target) {
+    } else if (!this.busy && this.#desiredTarget() !== this.controlTarget) {
       await this.#operate((epoch) => this.#sendTarget(epoch));
     }
   }
@@ -224,6 +383,11 @@ export class Ride {
       name: this.workout?.name ?? "Ride",
       simulator: this.simulator,
       seconds: this.elapsed,
+      workoutElapsed: this.workoutElapsed,
+      controlMode: this.controlMode,
+      controlTarget: this.controlTarget,
+      intensity: this.intensity,
+      ...(this.routeId ? { routeId: this.routeId } : {}),
       distanceKm: this.distanceKm,
       averagePower: this.averagePower,
       workKj: this.workKj,
@@ -231,8 +395,9 @@ export class Ride {
       completed:
         this.status === "finished" &&
         this.workout?.seconds !== null &&
-        this.elapsed >= (this.workout?.seconds ?? Infinity),
+        this.workoutElapsed >= (this.workout?.seconds ?? Infinity),
       samples: [...this.samples],
+      ...(this.#sourceChanges.length ? { sourceChanges: [...this.#sourceChanges] } : {}),
     };
   }
 
@@ -250,16 +415,27 @@ export class Ride {
 
   #desiredTarget(): number {
     if (!this.workout) return 0;
-    return trainerWatts(
-      currentStep(this.workout, this.elapsed).step.watts + this.adjustment,
+    if (this.controlMode === "resistance")
+      return resistanceTarget(this.resistance, this.trainer.capabilities.current?.resistanceRange);
+    if (this.controlMode === "terrain")
+      return terrainTarget(this.routeId, this.distanceKm, this.adjustment);
+    return workoutTarget(
+      currentStep(this.workout, this.workoutElapsed).step.watts,
+      this.intensity,
+      this.adjustment,
       this.trainer.capabilities.current?.powerRange,
     );
   }
 
   async #sendTarget(epoch: number): Promise<void> {
     const target = this.#desiredTarget();
-    await this.trainer.setTargetPower(target);
-    if (epoch === this.#epoch) this.target = target;
+    if (this.controlMode === "erg") await this.trainer.setTargetPower(target);
+    else if (this.controlMode === "resistance") await this.trainer.setResistanceLevel(target);
+    else await this.trainer.setSimulation({ gradePercent: target });
+    if (epoch === this.#epoch) {
+      this.controlTarget = target;
+      this.target = this.controlMode === "erg" ? target : 0;
+    }
   }
 
   async #operate(operation: (epoch: number) => Promise<void>): Promise<void> {
@@ -297,6 +473,14 @@ export class Ride {
   }
 
   #record(delta: number): void {
+    const sources = this.sourceSnapshot?.();
+    if (sources) {
+      const key = JSON.stringify(sources);
+      if (key !== this.#sourceKey) {
+        this.#sourceChanges.push({ seconds: this.elapsed, sources });
+        this.#sourceKey = key;
+      }
+    }
     const telemetry = this.telemetry;
     const watts = telemetry?.instantaneousPowerWatts;
     const speed = telemetry?.instantaneousSpeedKph;
@@ -314,6 +498,10 @@ export class Ride {
       cadence: telemetry?.instantaneousCadenceRpm ?? null,
       speed: speed ?? null,
       target: this.target,
+      heartRate: telemetry?.heartRateBpm ?? null,
+      distanceKm: this.distanceKm,
+      ...(this.controlMode === "terrain" ? { grade: this.controlTarget } : {}),
+      ...(this.controlMode === "resistance" ? { resistance: this.controlTarget } : {}),
     });
   }
 }
@@ -335,28 +523,37 @@ function checkpointMeasuredSeconds(
     record.name !== workout.name ||
     !Number.isFinite(Date.parse(record.startedAt)) ||
     !Number.isFinite(adjustment) ||
+    (record.workoutElapsed !== undefined && !nonnegative(record.workoutElapsed)) ||
+    (record.controlMode !== undefined &&
+      !["erg", "resistance", "terrain"].includes(record.controlMode)) ||
+    (record.controlTarget !== undefined && !Number.isFinite(record.controlTarget)) ||
+    !validWorkoutIntensity(record.intensity, record.controlMode) ||
     ![record.seconds, record.workKj, record.distanceKm].every(nonnegative) ||
     (record.averagePower !== null && !nonnegative(record.averagePower))
   )
     throw new Error("This ride checkpoint is invalid or belongs to a different ride.");
+  if (workout.steps.length === 0 || workout.steps.length > WORKOUT_LIMITS.steps)
+    throw new Error("This workout has an invalid number of intervals.");
   const validSteps = workout.steps.every(
     (step) =>
-      nonnegative(step.watts) &&
+      validWorkoutPower(step.watts) &&
+      (step.endWatts === undefined || validWorkoutPower(step.endWatts)) &&
+      (step.cadenceRpm === undefined || validWorkoutCadence(step.cadenceRpm)) &&
       step.seconds > 0 &&
       (Number.isFinite(step.seconds) ||
         (workout.seconds === null && workout.steps.length === 1 && step.seconds === Infinity)),
   );
+  const expandedSeconds = workout.steps.reduce((seconds, step) => seconds + step.seconds, 0);
   if (
-    workout.steps.length === 0 ||
     !validSteps ||
     (workout.seconds !== null &&
       (!nonnegative(workout.seconds) ||
-        record.seconds >= workout.seconds ||
-        Math.abs(
-          workout.steps.reduce((seconds, step) => seconds + step.seconds, 0) - workout.seconds,
-        ) > 0.001))
+        workout.seconds > WORKOUT_LIMITS.seconds ||
+        expandedSeconds > WORKOUT_LIMITS.seconds ||
+        (record.workoutElapsed ?? record.seconds) >= workout.seconds ||
+        Math.abs(expandedSeconds - workout.seconds) > 0.001))
   ) {
-    throw new Error("This workout is already complete or has an invalid duration.");
+    throw new Error("This workout is already complete or has invalid steps or duration.");
   }
   let previous = -1;
   for (const sample of record.samples) {

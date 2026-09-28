@@ -140,6 +140,7 @@ describe("parseMachineStatus", () => {
     expect(parseMachineStatus(new DataView(Uint8Array.of(0x02, 0x02).buffer))).toEqual({
       opcode: 0x02,
       kind: "stopped-or-paused-by-user",
+      decodedParameters: { control: "pause", controlCode: 2 },
       parameters: Uint8Array.of(0x02),
     });
   });

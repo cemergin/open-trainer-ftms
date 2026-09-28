@@ -2,34 +2,13 @@ import { FtmsProtocolError } from "./errors.js";
 import type {
   ControlPointResponse,
   MachineStatus,
+  MachineStatusKind,
+  MachineStatusParameters,
+  SpinDownResponse,
   TrainerCapabilities,
   TrainerTelemetry,
   ValueRange,
 } from "./types.js";
-
-const MACHINE_STATUS_KIND: Readonly<Record<number, MachineStatus["kind"]>> = {
-  0x01: "reset",
-  0x02: "stopped-or-paused-by-user",
-  0x03: "stopped-by-safety-key",
-  0x04: "started-or-resumed-by-user",
-  0x05: "target-speed-changed",
-  0x06: "target-inclination-changed",
-  0x07: "target-resistance-changed",
-  0x08: "target-power-changed",
-  0x09: "target-heart-rate-changed",
-  0x0a: "target-energy-changed",
-  0x0b: "target-steps-changed",
-  0x0c: "target-strides-changed",
-  0x0d: "target-distance-changed",
-  0x0e: "target-training-time-changed",
-  0x0f: "target-time-two-heart-rate-zones-changed",
-  0x10: "target-time-three-heart-rate-zones-changed",
-  0x11: "target-time-five-heart-rate-zones-changed",
-  0x12: "simulation-parameters-changed",
-  0x13: "wheel-circumference-changed",
-  0x14: "spin-down-status",
-  0xff: "control-permission-lost",
-};
 
 const MACHINE_FEATURE = {
   cadence: 1 << 1,
@@ -184,19 +163,125 @@ export function parseControlPointResponse(view: DataView): ControlPointResponse 
   };
 }
 
+export function parseSpinDownResponse(response: ControlPointResponse): SpinDownResponse {
+  if (
+    response.requestOpcode !== 0x13 ||
+    response.resultCode !== 0x01 ||
+    response.responseParameters.length !== 4
+  ) {
+    throw new FtmsProtocolError("Successful spin-down response requires two UINT16 target speeds.");
+  }
+  const bytes = response.responseParameters;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    ...response,
+    targetSpeedLowKph: view.getUint16(0, true) / 100,
+    targetSpeedHighKph: view.getUint16(2, true) / 100,
+  };
+}
+
 export function parseMachineStatus(view: DataView): MachineStatus {
   if (view.byteLength < 1) {
     throw new FtmsProtocolError("Fitness Machine Status must contain at least 1 byte.");
   }
   const opcode = view.getUint8(0);
-  if (opcode === 0x02 && view.byteLength < 2) {
-    throw new FtmsProtocolError("Fitness Machine Status 0x02 requires a stop-or-pause parameter.");
-  }
-  return {
-    opcode,
-    kind: MACHINE_STATUS_KIND[opcode] ?? "unknown",
-    parameters: new Uint8Array(
-      view.buffer.slice(view.byteOffset + 1, view.byteOffset + view.byteLength),
-    ),
+  const parameters = new Uint8Array(
+    view.buffer.slice(view.byteOffset + 1, view.byteOffset + view.byteLength),
+  );
+  const status = <Kind extends MachineStatusKind>(
+    kind: Kind,
+    length: number,
+    decode: () => MachineStatusParameters[Kind],
+  ): MachineStatus => {
+    if (parameters.length !== length) {
+      throw new FtmsProtocolError(
+        `Fitness Machine Status 0x${opcode.toString(16)} requires ${length} parameter bytes; got ${parameters.length}.`,
+      );
+    }
+    const decodedParameters = decode();
+    return {
+      opcode,
+      kind,
+      parameters,
+      ...(decodedParameters === undefined ? {} : { decodedParameters }),
+    } as MachineStatus;
   };
+  const u16 = (offset = 1): number => view.getUint16(offset, true);
+  const i16 = (): number => view.getInt16(1, true);
+  switch (opcode) {
+    case 0x01:
+      return status("reset", 0, () => undefined);
+    case 0x02:
+      return status("stopped-or-paused-by-user", 1, () => {
+        const controlCode = view.getUint8(1);
+        return {
+          controlCode,
+          control: controlCode === 1 ? "stop" : controlCode === 2 ? "pause" : "unknown",
+        };
+      });
+    case 0x03:
+      return status("stopped-by-safety-key", 0, () => undefined);
+    case 0x04:
+      return status("started-or-resumed-by-user", 0, () => undefined);
+    case 0x05:
+      return status("target-speed-changed", 2, () => ({ speedKph: u16() / 100 }));
+    case 0x06:
+      return status("target-inclination-changed", 2, () => ({ inclinationPercent: i16() / 10 }));
+    case 0x07:
+      return status("target-resistance-changed", 2, () => ({ resistanceLevel: i16() / 10 }));
+    case 0x08:
+      return status("target-power-changed", 2, () => ({ powerWatts: i16() }));
+    case 0x09:
+      return status("target-heart-rate-changed", 1, () => ({ heartRateBpm: view.getUint8(1) }));
+    case 0x0a:
+      return status("target-energy-changed", 2, () => ({ energyKcal: u16() }));
+    case 0x0b:
+      return status("target-steps-changed", 2, () => ({ steps: u16() }));
+    case 0x0c:
+      return status("target-strides-changed", 2, () => ({ strides: u16() }));
+    case 0x0d:
+      return status("target-distance-changed", 3, () => ({ distanceMeters: readUint24(view, 1) }));
+    case 0x0e:
+      return status("target-training-time-changed", 2, () => ({ timeSeconds: u16() }));
+    case 0x0f:
+      return status("target-time-two-heart-rate-zones-changed", 4, () => ({
+        fatBurnSeconds: u16(),
+        fitnessSeconds: u16(3),
+      }));
+    case 0x10:
+      return status("target-time-three-heart-rate-zones-changed", 6, () => ({
+        lightSeconds: u16(),
+        moderateSeconds: u16(3),
+        hardSeconds: u16(5),
+      }));
+    case 0x11:
+      return status("target-time-five-heart-rate-zones-changed", 10, () => ({
+        veryLightSeconds: u16(),
+        lightSeconds: u16(3),
+        moderateSeconds: u16(5),
+        hardSeconds: u16(7),
+        maximumSeconds: u16(9),
+      }));
+    case 0x12:
+      return status("simulation-parameters-changed", 6, () => ({
+        windSpeedMps: i16() / 1000,
+        gradePercent: view.getInt16(3, true) / 100,
+        rollingResistance: view.getUint8(5) / 10000,
+        windResistanceKgPerM: view.getUint8(6) / 100,
+      }));
+    case 0x13:
+      return status("wheel-circumference-changed", 2, () => ({ circumferenceMm: u16() / 10 }));
+    case 0x14:
+      return status("spin-down-status", 1, () => {
+        const statusCode = view.getUint8(1);
+        const names = ["unknown", "requested", "success", "error", "stop-pedaling"] as const;
+        return { statusCode, status: names[statusCode] ?? "unknown" };
+      });
+    case 0x15:
+      return status("target-cadence-changed", 2, () => ({ cadenceRpm: u16() / 2 }));
+    case 0xff:
+      return status("control-permission-lost", 0, () => undefined);
+    default:
+      return { opcode, kind: "unknown", parameters };
+  }
 }
