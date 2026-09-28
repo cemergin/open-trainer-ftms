@@ -5,6 +5,8 @@ The app is a static site. GitHub Pages hosts it over HTTPS for free from this pu
 - Ride app: <https://cemergin.github.io/open-trainer-ftms/>
 - Trainer diagnostics: <https://cemergin.github.io/open-trainer-ftms/lab.html>
 
+Publishing is manual: merging source changes into `main` does not update the live site. The commands below publish the current checkout.
+
 ## Deploy
 
 Install the dependencies with `npm ci`, and authenticate [GitHub CLI](https://cli.github.com/) with `gh auth login`. The signed-in account needs permission to push this repository and manage its Pages settings. A classic token with the `repo` scope is sufficient; no workflow token scope is needed.
@@ -12,13 +14,13 @@ Install the dependencies with `npm ci`, and authenticate [GitHub CLI](https://cl
 Check the current changes before committing:
 
 ```sh
-npm run deploy -- --dry-run
+node scripts/publish-pages.mjs --dry-run
 ```
 
 Commit and push the source changes, then publish:
 
 ```sh
-npm run deploy
+node scripts/publish-pages.mjs
 ```
 
 The command runs type checking, tests, and the production build, and checks that the app and diagnostics page use valid relative asset paths. It publishes only `apps/trainer-lab/dist` plus `.nojekyll` to the dedicated `gh-pages` branch and enables Pages with that branch's root directory as its source. An existing custom domain is retained.
