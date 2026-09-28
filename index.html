@@ -9,9 +9,9 @@
       content="A simple, local cycling companion. Connect your smart trainer, choose a workout, and ride."
     />
     <title>Open Trainer — Just ride.</title>
-    <script type="module" crossorigin src="./assets/index-DI-yAx7I.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/dom-D7WmQ3DN.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-BJdSoEwW.css">
+    <script type="module" crossorigin src="./assets/index-BLQtq9Me.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/dom-Da7QG8Eq.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-z67U1dSg.css">
   </head>
   <body>
     <div class="shell">
@@ -96,26 +96,30 @@
                 <span id="power-caption" class="metric-caption">Live from your trainer</span>
               </div>
               <div class="target-metric">
-                <span class="metric-label">TARGET POWER</span>
-                <div><strong id="target">60</strong><span class="unit">W</span></div>
+                <span class="metric-label" id="control-label">WORKOUT INTENSITY</span>
+                <div>
+                  <strong id="target">100</strong><span class="unit" id="control-unit">%</span>
+                </div>
+                <p id="target-detail" class="metric-caption">Now 60 W · reference 100 W</p>
                 <div class="target-controls">
                   <button
                     id="power-down"
                     class="square-button"
-                    aria-label="Decrease target by 5 watts"
+                    aria-label="Decrease workout intensity by 5 percentage points"
                     disabled
                   >
                     −</button
-                  ><span>5 W</span
+                  ><span>5%</span
                   ><button
                     id="power-up"
                     class="square-button"
-                    aria-label="Increase target by 5 watts"
+                    aria-label="Increase workout intensity by 5 percentage points"
                     disabled
                   >
                     +
                   </button>
                 </div>
+                <p id="intensity-help" class="metric-caption">Scales every effort and recovery.</p>
               </div>
             </div>
             <div id="ride-feedback" class="ride-feedback" data-band="waiting">
@@ -145,6 +149,24 @@
                   <span class="rider">↗</span><span class="road-dashes"></span>
                 </div>
               </div>
+              <div id="auto-pause" class="auto-pause-notice" hidden>
+                <div>
+                  <strong>Auto-pause in</strong>
+                  <p role="status">Low cadence detected. Keep pedaling to continue.</p>
+                </div>
+                <strong id="auto-pause-countdown" role="timer" aria-live="off">20s</strong>
+              </div>
+            </div>
+            <div id="terrain-progress" class="terrain-progress" hidden>
+              <div class="route-heading">
+                <strong id="route-title"></strong><span id="route-distance"></span>
+              </div>
+              <div
+                id="route-profile"
+                role="img"
+                aria-label="Route grade profile and rider position"
+              ></div>
+              <p id="ghost-status"></p>
             </div>
             <div class="secondary-metrics">
               <div>
@@ -160,6 +182,57 @@
                 ><strong id="remaining">05:00</strong><small id="next-step">warm up</small>
               </div>
             </div>
+            <section id="up-next" class="up-next" aria-labelledby="up-next-label" hidden>
+              <div>
+                <span class="metric-label" id="up-next-label">UP NEXT</span>
+                <strong id="up-next-name"></strong>
+                <p id="up-next-detail"></p>
+              </div>
+              <strong id="up-next-countdown" role="timer" aria-live="off"></strong>
+            </section>
+            <figure class="live-chart-panel" aria-labelledby="live-chart-title">
+              <div class="live-chart-heading">
+                <span class="metric-label" id="live-chart-title">YOUR LIVE RHYTHM</span>
+                <span>2-MIN WINDOW</span>
+              </div>
+              <div class="live-chart-keys">
+                <span class="live-chart-power"
+                  >Power <strong id="live-chart-power-value">— W</strong></span
+                >
+                <span class="live-chart-heart"
+                  >Heart rate <strong id="live-chart-heart-value">— bpm</strong></span
+                >
+                <span id="live-chart-target-key">ERG target</span>
+              </div>
+              <div class="live-chart-scales" aria-hidden="true">
+                <span id="live-chart-power-scale" class="live-chart-power">200 W</span>
+                <span id="live-chart-heart-scale" class="live-chart-heart">200 bpm</span>
+              </div>
+              <svg
+                id="live-chart"
+                viewBox="0 0 600 140"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label="Recorded power and heart rate over active ride time"
+              >
+                <path class="live-chart-grid" d="M0,4H600 M0,48H600 M0,92H600 M0,136H600" />
+                <path id="live-chart-target" />
+                <path id="live-chart-power" class="live-chart-line" />
+                <path id="live-chart-heartRate" class="live-chart-line" />
+              </svg>
+              <div class="live-chart-scales" aria-hidden="true">
+                <span>0 W</span><span>0 bpm</span>
+              </div>
+              <div class="live-chart-time">
+                <span id="live-chart-start">00:00</span><span id="live-chart-end">02:00</span>
+              </div>
+              <figcaption>
+                <span id="live-chart-note">Start a ride to see your effort take shape.</span>
+                <span id="live-chart-heart-help"
+                  >Heart rate unavailable · choose a heart-rate source in Sensors.</span
+                >
+              </figcaption>
+            </figure>
             <div class="profile-heading">
               <span class="metric-label">THE ROAD AHEAD</span
               ><span id="workout-duration">30 MIN · ERG WORKOUT</span>
@@ -178,6 +251,14 @@
               ><button id="stop" class="button stop-button" hidden>■ End ride</button
               ><span id="action-hint">Connect your trainer to begin.</span>
             </div>
+            <div class="coaching-strip">
+              <button id="skip-interval" class="button subtle" disabled>Skip interval →</button>
+              <button id="extend-interval" class="button subtle" disabled>+1 minute</button>
+              <label><input type="checkbox" id="audio-cues" />Audio cues</label>
+              <label><input type="checkbox" id="spoken-cues" />Speak intervals</label>
+              <span id="cadence-cue"></span><span id="heart-rate">— bpm</span>
+            </div>
+            <span id="wake-status" role="status">Screen wake lock starts with your ride</span>
           </section>
 
           <aside class="setup-panel">
@@ -193,13 +274,15 @@
               <label for="duration">DURATION</label
               ><select id="duration">
                 <option value="15">15 minutes</option>
+                <option value="20">20 minutes</option>
                 <option value="30" selected>30 minutes</option>
+                <option value="40">40 minutes</option>
                 <option value="45">45 minutes</option>
                 <option value="60">60 minutes</option>
               </select>
             </div>
-            <div class="settings-row">
-              <label for="base-power">STEADY TARGET <small>OPTIONAL</small></label>
+            <div class="settings-row" id="power-setting">
+              <label for="base-power">REFERENCE POWER <small>OPTIONAL</small></label>
               <div class="watts-input">
                 <input
                   id="base-power"
@@ -213,9 +296,63 @@
               </div>
             </div>
             <p id="target-help" class="setup-note">
-              Leave it on Auto for a suggested starting power, or choose your own. You can adjust it
-              during the ride.
+              Your starting point at 100%. Leave Auto on, or choose watts once and adjust workout
+              intensity as you ride.
             </p>
+            <div id="spice-setting" class="spice-setting" data-active="false">
+              <div class="spice-heading">
+                <label
+                  ><input id="spice-toggle" type="checkbox" aria-describedby="spice-help" />Spice
+                  things up</label
+                >
+                <span id="spice-index">Classic</span>
+              </div>
+              <p id="spice-help">Different hills, peaks, and recoveries. Same ride length.</p>
+              <div class="spice-controls">
+                <label for="spice-level">Season to taste</label>
+                <select id="spice-level" aria-describedby="spice-help" disabled>
+                  <option value="mild">Mild</option>
+                  <option value="spicy" selected>Spicy</option>
+                  <option value="hot">Hot</option>
+                </select>
+                <button
+                  id="spice-shuffle"
+                  class="button subtle"
+                  type="button"
+                  disabled
+                  aria-label="Shuffle workout variation"
+                >
+                  ↻ Shuffle
+                </button>
+              </div>
+            </div>
+            <div class="mode-controls">
+              <label
+                >Ride control
+                <select id="ride-mode">
+                  <option value="erg">ERG · target power</option>
+                  <option value="resistance">Resistance · your effort</option>
+                  <option value="terrain">Terrain · follow a route</option>
+                </select></label
+              >
+              <div id="terrain-setup" hidden>
+                <label
+                  >Route
+                  <select id="route-select"></select></label
+                ><label
+                  >Your ghost
+                  <select id="ghost-select">
+                    <option value="">Ride solo</option>
+                  </select></label
+                >
+              </div>
+              <p id="mode-help" class="mode-help"></p>
+              <p id="custom-workout">Choose a favorite or build your own.</p>
+              <div class="tool-actions">
+                <button id="clear-custom" class="button subtle">Use preset</button
+                ><button id="edit-current" class="button subtle" disabled>Edit workout</button>
+              </div>
+            </div>
             <div class="setup-footer">
               <span aria-hidden="true">↳</span>
               <p id="setup-footer">Your first five minutes start gently at 60 W.</p>
@@ -223,6 +360,44 @@
           </aside>
         </div>
 
+        <div class="training-tools">
+          <details class="tool-panel" id="editor-details">
+            <summary>Workout studio · make it yours</summary>
+            <div id="workout-editor" class="tool-content"></div>
+          </details>
+          <details class="tool-panel">
+            <summary>Sensors · choose your data sources</summary>
+            <div id="sensor-panel" class="tool-content"></div>
+          </details>
+          <details class="tool-panel" id="analysis-panel">
+            <summary>
+              Ride analysis · <span id="analysis-title">choose a past ride below</span>
+            </summary>
+            <div class="tool-content">
+              <div class="analysis-controls">
+                <label
+                  >Reference FTP (watts)<input
+                    id="analysis-ftp"
+                    type="number"
+                    min="25"
+                    max="600"
+                    value="200" /></label
+                ><label
+                  >Compare with<select id="compare-ride">
+                    <option>No comparison</option>
+                  </select></label
+                >
+              </div>
+              <div id="analysis-chart"></div>
+              <div id="analysis-metrics" class="analysis-metrics"></div>
+              <div id="analysis-zones"></div>
+              <p id="analysis-note">
+                Select Analyze on any saved ride. Green is actual power, grey is target, blue is
+                comparison. Cadence spread is the standard deviation of measured cadence.
+              </p>
+            </div>
+          </details>
+        </div>
         <section class="ride-bottom" aria-label="Ride statistics">
           <div>
             <span class="metric-label">DISTANCE <span class="muted">/ EST.</span></span
@@ -260,12 +435,25 @@
               <p class="eyebrow">YOUR TIME ON THE BIKE</p>
               <h2 id="history-title">Past rides</h2>
             </div>
-            <button id="export-data" class="button subtle">Export all data ↓</button>
+            <button id="export-data" class="button subtle">Export ride backup ↓</button>
           </div>
           <p class="history-note">
-            Last 30 rides, saved in this browser. No account, cloud upload, or cookies. Browser data
-            can be cleared by your browser; export a backup to keep it.
+            Up to 100 rides, saved in this browser. No account, cloud upload, or cookies. Browser
+            data can be cleared by your browser; export a backup to keep it.
           </p>
+          <details class="help">
+            <summary>Manage local ride data</summary>
+            <p id="storage-detail"></p>
+            <label class="button subtle"
+              >Merge ride backup
+              <input id="import-backup" type="file" accept=".json,application/json"
+            /></label>
+            <p id="data-status" role="status">
+              Imports merge by ride start time and preserve your current recovery. Workout favorites
+              can be exported in Workout studio. FIT exports use active ride time; paused time is
+              omitted.
+            </p>
+          </details>
           <div id="ride-history" class="ride-history"></div>
         </section>
         <details class="help">
@@ -285,9 +473,9 @@
             <li>Use Pause for a break, or End ride to stop and save. Escape also ends the ride.</li>
           </ol>
           <p>
-            The app needs an ERG-capable FTMS trainer. If your trainer isn’t listed, check its
-            firmware in the manufacturer’s app. Ride data stays in this browser. CSV export is a
-            data file, not a Strava activity upload.
+            The app needs an FTMS trainer supporting your selected control mode. If your trainer
+            isn’t listed, check its firmware in the manufacturer’s app. Ride data stays in this
+            browser. Use FIT export for compatible activity apps, or CSV for your own analysis.
           </p>
         </details>
       </main>
