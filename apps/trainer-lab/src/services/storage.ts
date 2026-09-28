@@ -1,7 +1,7 @@
 import type { RideRecord, RideSample } from "../ride";
 import { WORKOUT_OPTIONS, type SpiceLevel, type Workout, type WorkoutStep } from "../workout";
 import { validWorkoutIntensity } from "../workout-intensity";
-import { WORKOUT_LIMITS } from "../workout-profile";
+import { validWorkoutCadence, validWorkoutPower, WORKOUT_LIMITS } from "../workout-profile";
 
 const KEY = "open-trainer:rides:v2";
 export const BACKUP_BYTE_LIMIT = 20_000_000;
@@ -245,9 +245,9 @@ function decodeWorkout(value: unknown): Workout | null {
     if (
       !object(step) ||
       typeof step.name !== "string" ||
-      !nonnegative(step.watts) ||
-      (step.endWatts !== undefined && !nonnegative(step.endWatts)) ||
-      (step.cadenceRpm !== undefined && (!nonnegative(step.cadenceRpm) || step.cadenceRpm > 250)) ||
+      !validWorkoutPower(step.watts) ||
+      (step.endWatts !== undefined && !validWorkoutPower(step.endWatts)) ||
+      (step.cadenceRpm !== undefined && !validWorkoutCadence(step.cadenceRpm)) ||
       typeof step.effort !== "string" ||
       !["easy", "steady", "hard"].includes(step.effort)
     )

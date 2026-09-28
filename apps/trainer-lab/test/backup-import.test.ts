@@ -319,6 +319,55 @@ describe("transactional ride backup imports", () => {
   });
 
   it.each([
+    { watts: -1 },
+    { watts: 600.01 },
+    { watts: 601 },
+    { endWatts: -1 },
+    { endWatts: 600.01 },
+    { endWatts: 601 },
+    { cadenceRpm: 0 },
+    { cadenceRpm: 0.5 },
+    { cadenceRpm: 250.01 },
+    { cadenceRpm: 251 },
+  ])("rejects out-of-range workout targets without replacing local data: %j", (targets) => {
+    expect(saveCheckpoint(checkpoint)).toBe(true);
+    const before = stored.get(KEY);
+    const recovery = {
+      ...checkpoint,
+      workout: {
+        ...checkpoint.workout,
+        steps: checkpoint.workout.steps.map((step, index) =>
+          index === 0 ? { ...step, ...targets } : step,
+        ),
+      },
+    };
+    setItem.mockClear();
+    expect(() =>
+      importRideBackup(backup([{ ...record, startedAt: "2026-09-28T12:00:00.000Z" }], recovery)),
+    ).toThrow(/invalid recovery checkpoint/);
+    expect(saveCheckpoint(recovery)).toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(stored.get(KEY)).toBe(before);
+    expect(loadCheckpoint()).toEqual(checkpoint);
+  });
+
+  it.each([
+    { watts: 0, endWatts: 600, cadenceRpm: 1 },
+    { watts: 600, endWatts: 0, cadenceRpm: 250 },
+  ])("preserves exact imported workout target boundaries: %j", (targets) => {
+    const recovery = {
+      ...checkpoint,
+      workout: {
+        ...checkpoint.workout,
+        steps: checkpoint.workout.steps.map((step) => ({ ...step, ...targets })),
+      },
+    };
+    expect(importRideBackup(backup([], recovery)).recovered).toBe(true);
+    expect(loadCheckpoint()).toEqual(recovery);
+    expect(JSON.parse(exportAllData()).checkpoint.workout).toEqual(recovery.workout);
+  });
+
+  it.each([
     { count: WORKOUT_LIMITS.steps + 1, seconds: WORKOUT_LIMITS.steps + 1, extraSeconds: 0 },
     { count: 1, seconds: WORKOUT_LIMITS.seconds + 1, extraSeconds: 0 },
     { count: 1, seconds: WORKOUT_LIMITS.seconds, extraSeconds: 0.0005 },

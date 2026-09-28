@@ -13,6 +13,14 @@ export interface WorkoutProfile {
 
 export const WORKOUT_LIMITS = { blocks: 100, steps: 500, repeats: 20, seconds: 86400 } as const;
 
+export function validWorkoutPower(value: unknown): value is number {
+  return number(value, 0, 600);
+}
+
+export function validWorkoutCadence(value: unknown): value is number {
+  return number(value, 1, 250);
+}
+
 export function workoutFromProfile(profile: WorkoutProfile): Workout {
   const valid = validateWorkoutProfile(profile);
   const steps = valid.blocks.flatMap((block) =>
@@ -68,13 +76,13 @@ function readStep(value: unknown): WorkoutStep {
     !object(value) ||
     !shortText(value.name) ||
     !number(value.seconds, 1, WORKOUT_LIMITS.seconds) ||
-    !number(value.watts, 0, 600) ||
+    !validWorkoutPower(value.watts) ||
     !["easy", "steady", "hard"].includes(String(value.effort))
   )
     throw new Error("Each step needs a name, a positive duration, and a target from 0 to 600 W.");
-  if (value.endWatts !== undefined && !number(value.endWatts, 0, 600))
+  if (value.endWatts !== undefined && !validWorkoutPower(value.endWatts))
     throw new Error("Ramp end power must be between 0 and 600 W.");
-  if (value.cadenceRpm !== undefined && !number(value.cadenceRpm, 1, 250))
+  if (value.cadenceRpm !== undefined && !validWorkoutCadence(value.cadenceRpm))
     throw new Error("Cadence targets must be between 1 and 250 rpm.");
   return {
     name: value.name.trim(),

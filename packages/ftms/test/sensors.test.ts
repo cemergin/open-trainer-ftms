@@ -88,6 +88,52 @@ describe("SIG sensor measurement parsing", () => {
       ).toThrow();
     }
   });
+  it("distinguishes wheel data at bit 4 from the payload-free offset indicator at bit 12", () => {
+    expect(parseCyclingPower(bytes(0x10, 0x00, 0x41, 0x01, 1, 0, 0, 0, 0, 8))).toBe(321);
+    expect(() => parseCyclingPower(bytes(0x10, 0x00, 0x41, 0x01))).toThrow();
+    expect(parseCyclingPower(bytes(0x00, 0x10, 0x41, 0x01))).toBe(321);
+    expect(() => parseCyclingPower(bytes(0x00, 0x10, 0x41, 0x01, 1, 0, 0, 0, 0, 8))).toThrow();
+  });
+  it("accepts a literal packet with balance, torque, wheel/crank data, energy and metadata flags", () => {
+    // GSS section 3.75: 0x183f carries 15 payload octets after flags and power.
+    const packet = bytes(
+      0x3f,
+      0x18,
+      0x41,
+      0x01,
+      100, // Pedal balance, left reference.
+      0x20,
+      0, // Accumulated torque, crank source.
+      1,
+      0,
+      0,
+      0,
+      0,
+      8, // Wheel revolutions and event time.
+      2,
+      0,
+      0,
+      4, // Crank revolutions and event time.
+      0x64,
+      0, // Accumulated energy; the offset indicator adds no bytes.
+    );
+    expect(parseCyclingPower(packet)).toBe(321);
+    expect(() =>
+      parseCyclingPower(new DataView(packet.buffer, 0, packet.byteLength - 1)),
+    ).toThrow();
+  });
+  it("accepts literal force/torque packets with packed extreme angles and both dead spots", () => {
+    // GSS section 3.75: bit 6 or 7, then bits 8–10, carry 4 + 3 + 2 + 2 octets.
+    for (const packet of [
+      bytes(0x40, 0x07, 0x41, 0x01, 200, 0, 0x38, 0xff, 0x5a, 0xe0, 0x10, 0, 0, 180, 0),
+      bytes(0x80, 0x07, 0x41, 0x01, 0x40, 0x06, 0xc0, 0xf9, 0x5a, 0xe0, 0x10, 0, 0, 180, 0),
+    ]) {
+      expect(parseCyclingPower(packet)).toBe(321);
+      expect(() =>
+        parseCyclingPower(new DataView(packet.buffer, 0, packet.byteLength - 1)),
+      ).toThrow();
+    }
+  });
   it.each([[], [0, 0], [0, 0, 1], [0, 32, 0, 0], [0, 0, 0, 0, 0]])(
     "rejects invalid power %j",
     (...value) => {

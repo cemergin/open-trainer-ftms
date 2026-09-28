@@ -278,6 +278,60 @@ describe("ride recovery", () => {
     expect(transport.commandHistory).toEqual([]);
   });
 
+  it("rejects invalid recovered power and cadence targets before changing state or sending commands", async () => {
+    const { ride, transport } = await setup();
+    for (const targets of [
+      { watts: 601 },
+      { watts: 600.01 },
+      { endWatts: 601 },
+      { endWatts: -1 },
+      { endWatts: NaN },
+      { cadenceRpm: 0 },
+      { cadenceRpm: 0.5 },
+      { cadenceRpm: 251 },
+      { cadenceRpm: NaN },
+    ]) {
+      const workout = {
+        ...shortWorkout,
+        steps: shortWorkout.steps.map((step) => ({ ...step, ...targets })),
+      };
+      expect(() => ride.restore(workout, checkpoint())).toThrow(/invalid steps/);
+    }
+    expect(ride.status).toBe("ready");
+    expect(ride.workout).toBeUndefined();
+    expect(ride.samples).toEqual([]);
+    expect(transport.commandHistory).toEqual([]);
+  });
+
+  it("recovers exact power and cadence boundaries without issuing commands", async () => {
+    const { ride, transport } = await setup();
+    const workout = {
+      ...shortWorkout,
+      steps: [
+        {
+          name: "Build",
+          seconds: 3,
+          watts: 0,
+          endWatts: 600,
+          cadenceRpm: 1,
+          effort: "hard" as const,
+        },
+        {
+          name: "Ease",
+          seconds: 3,
+          watts: 600,
+          endWatts: 0,
+          cadenceRpm: 250,
+          effort: "easy" as const,
+        },
+      ],
+    };
+    ride.restore(workout, checkpoint());
+    expect(ride.status).toBe("paused");
+    expect(ride.workout).toEqual(workout);
+    expect(transport.commandHistory).toEqual([]);
+  });
+
   it("recovers a workout at both the 500-interval and 24-hour limits", async () => {
     const { ride, transport } = await setup();
     const workout = {

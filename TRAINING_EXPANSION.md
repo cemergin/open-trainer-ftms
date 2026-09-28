@@ -29,7 +29,7 @@ Keep the existing dark palette, shared tokens, large ride controls, and restrain
 ## Delivered and verified
 
 - Implemented the six workstreams above, including visible screen wake-lock status, retry backoff, and reacquisition after returning to the tab.
-- 243 library tests, 359 app tests, and 12 release-gate tests pass (614 total). Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
+- 246 library tests, 373 app tests, and 12 release-gate tests pass (631 total). Strict formatting/lint, app types, production builds, and isolated package checks pass with the existing thresholds.
 - Added the live power/heart-rate chart with a two-minute active-time window, labelled scales, an ERG target trace, pause/recovery support, and missing-data gaps.
 - Low cadence now shows a 20-second auto-pause countdown. Pedaling cancels it, missing cadence is not treated as zero, and resuming starts a fresh countdown if needed.
 - Duration options include 15, 20, 30, 40, 45, and 60 minutes. Optional Spice adds repeatable variations to all six timed ERG presets, with a Shuffle button and mix index. Warm-up, cool-down, and total duration stay fixed; ramp previews show the changing power targets. Custom workouts, free rides, and other control modes remain unchanged.

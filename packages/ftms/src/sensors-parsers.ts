@@ -39,6 +39,8 @@ export function parseCadence(value: DataView): CrankMeasurement | null {
 export function parseCyclingPower(value: DataView): number {
   if (value.byteLength < 4) throw new Error("Truncated cycling-power measurement.");
   const flags = value.getUint16(0, true);
+  // Bluetooth SIG GSS (2026-09-09), section 3.75, Tables 3.129–3.130:
+  // https://www.bluetooth.com/specifications/gss/
   // Bits 1, 3, and 12 describe fields; only presence bits add payload bytes.
   const optionalFields = [
     [0, 1],
