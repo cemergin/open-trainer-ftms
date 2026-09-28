@@ -1,6 +1,6 @@
 {
   "name": "@open-trainer/ftms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A transport-independent Bluetooth FTMS controller for browser-based smart trainer applications.",
   "type": "module",
   "sideEffects": false,
